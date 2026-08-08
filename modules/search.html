@@ -63,6 +63,15 @@
 
     <script>
         /* ==========================================================
+           0. CONFIGURATION
+           ========================================================== */
+        // Délai maximal autorisé pour la recherche AVANT de devoir répondre
+        // au routeur. Doit rester nettement inférieur au timeout du routeur
+        // lui-même (souvent 2-3s). Ajustez cette valeur selon vos mesures
+        // réelles côté routeur.
+        const SEARCH_TIMEOUT_MS = 1800;
+
+        /* ==========================================================
            1. PROTOCOLE ROUTEUR (iframe-postMessage)
            ========================================================== */
         window.addEventListener('message', function(event) {
@@ -87,7 +96,9 @@
             const inputEl = document.getElementById('query');
             if (inputEl) inputEl.value = query;
 
-            // Exécuter la recherche web
+            // Exécuter la recherche web. Cette fonction GARANTIT un callback
+            // (succès ou échec) dans la fenêtre SEARCH_TIMEOUT_MS, donc le
+            // routeur reçoit toujours une réponse avant son propre timeout.
             executeSearch(query, function(results, error) {
                 if (error) {
                     sendResponse(event.source, requestId, false, error, []);
@@ -111,59 +122,67 @@
         }
 
         /* ==========================================================
-           2. MOTEUR DE RECHERCHE (Wikipédia JSONP avec Anti-Timeout)
+           2. MOTEUR DE RECHERCHE (Wikipédia via fetch + AbortController)
            ========================================================== */
         function executeSearch(query, callback) {
             const container = document.getElementById('results');
             container.innerHTML = '<p class="status">Recherche en cours...</p>';
 
-            const callbackName = 'wikiCallback_' + Math.round(Math.random() * 100000);
-            const script = document.createElement('script');
             let hasResponded = false;
+            const controller = new AbortController();
 
-            // Sécurité anti-timeout (force une réponse après 3.5s si l'API ne répond pas à temps)
+            // Coupe net la requête réseau si elle dépasse le budget imparti,
+            // au lieu d'attendre indéfiniment une réponse ou une erreur réseau
+            // qui pourrait ne jamais arriver (cas JSONP précédent).
             const safetyTimeout = setTimeout(function() {
                 if (!hasResponded) {
                     hasResponded = true;
-                    cleanup();
+                    controller.abort();
+                    container.innerHTML = '<p class="status">La recherche prend trop de temps. Réessayez.</p>';
                     callback(null, "Délai de recherche dépassé.");
                 }
-            }, 3500);
+            }, SEARCH_TIMEOUT_MS);
 
-            function cleanup() {
-                if (window[callbackName]) delete window[callbackName];
-                if (script.parentNode) script.parentNode.removeChild(script);
-            }
+            const apiUrl = `https://fr.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=5&namespace=0&format=json&origin=*`;
 
-            window[callbackName] = function(data) {
-                if (hasResponded) return;
-                hasResponded = true;
-                clearTimeout(safetyTimeout);
-                cleanup();
+            fetch(apiUrl, { signal: controller.signal })
+                .then(function(response) {
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    return response.json();
+                })
+                .then(function(data) {
+                    if (hasResponded) return; // le timeout a déjà répondu
+                    hasResponded = true;
+                    clearTimeout(safetyTimeout);
 
-                const titles = data[1] || [];
-                const snippets = data[2] || [];
-                const urls = data[3] || [];
-                const results = [];
+                    const titles = data[1] || [];
+                    const snippets = data[2] || [];
+                    const urls = data[3] || [];
+                    const results = [];
 
-                for (let i = 0; i < titles.length; i++) {
-                    results.push({
-                        title: titles[i],
-                        snippet: snippets[i] || 'Pas de description disponible.',
-                        url: urls[i]
-                    });
-                }
+                    for (let i = 0; i < titles.length; i++) {
+                        results.push({
+                            title: titles[i],
+                            snippet: snippets[i] || 'Pas de description disponible.',
+                            url: urls[i]
+                        });
+                    }
 
-                // Rendu dans l'interface graphique du microservice
-                renderResults(results);
+                    renderResults(results);
+                    callback(results, null);
+                })
+                .catch(function(err) {
+                    if (hasResponded) return; // le timeout a déjà répondu
+                    hasResponded = true;
+                    clearTimeout(safetyTimeout);
 
-                // Retourne les résultats au callback (pour le routeur)
-                callback(results, null);
-            };
-
-            const apiUrl = `https://fr.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=5&namespace=0&format=json&callback=${callbackName}`;
-            script.src = apiUrl;
-            document.body.appendChild(script);
+                    // Erreur réseau réelle (pas un abandon volontaire) :
+                    // on répond quand même tout de suite, sans attendre.
+                    if (err.name !== 'AbortError') {
+                        container.innerHTML = '<p class="status">Erreur lors de la recherche.</p>';
+                        callback(null, "Erreur réseau : " + err.message);
+                    }
+                });
         }
 
         /* ==========================================================
