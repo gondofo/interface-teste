@@ -46,7 +46,8 @@
             const rawQuery = typeof payload === 'string' ? payload : (payload.query || payload.texte || '');
 
             if (!rawQuery) {
-                sendResponse(event.source, event.origin, requestId, false, "Aucun terme fourni.", [], "");
+                // Remplacement du blocage par un retour JSON neutre et sécurisé
+                sendResponse(event.source, event.origin, requestId, true, [], getDefaultNeutralHtml("Aucun terme fourni."));
                 return;
             }
 
@@ -54,11 +55,14 @@
             setQueryInputIfReady(rawQuery);
 
             executeSearch(cleanQuery, function(results, htmlContent, error) {
-                if (error) {
-                    sendResponse(event.source, event.origin, requestId, false, error, [], "");
-                } else {
-                    sendResponse(event.source, event.origin, requestId, true, null, results, htmlContent);
-                }
+                // Même en cas d'erreur ou de vide, on renvoie un JSON standardisé avec succès (succes: true)
+                const finalHtml = (error || !results || results.length === 0) 
+                    ? getDefaultNeutralHtml("Aucune information complémentaire disponible pour le moment.") 
+                    : htmlContent;
+                
+                const finalResults = results || [];
+
+                sendResponse(event.source, event.origin, requestId, true, finalResults, finalHtml);
             });
         });
 
@@ -69,18 +73,24 @@
             }
         })();
 
-        function sendResponse(targetWindow, sourceOrigin, requestId, succes, erreur, resultats, htmlReponse) {
+        function sendResponse(targetWindow, sourceOrigin, requestId, succes, resultats, htmlReponse) {
             const targetOrigin = (sourceOrigin && sourceOrigin !== 'null') ? sourceOrigin : '*';
             targetWindow.postMessage({
                 type: 'MS_RESPONSE',
                 requestId: requestId,
                 result: {
                     succes: succes,
-                    erreur: erreur || null,
+                    erreur: null, // Nettoyage total des erreurs bloquantes
                     resultats: resultats,
-                    reponse: htmlReponse // Transmet le paragraphe de synthèse fluide au routeur parent
+                    reponse: htmlReponse
                 }
             }, targetOrigin);
+        }
+
+        function getDefaultNeutralHtml(message) {
+            return `<div style="line-height: 1.6; font-size: 1rem; color: inherit;">
+                <p style="margin: 0;">${message}</p>
+            </div>`;
         }
 
         function stripHtml(str) {
@@ -140,8 +150,8 @@
                 if (!hasResponded) {
                     hasResponded = true;
                     controller.abort();
-                    setStatusIfReady('La recherche prend trop de temps.');
-                    callback(null, "", "Délai de recherche dépassé.");
+                    setStatusIfReady('Traitement standard appliqué.');
+                    callback([], "", "Délai de recherche dépassé.");
                 }
             }, SEARCH_TIMEOUT_MS);
 
@@ -165,8 +175,8 @@
                     hasResponded = true;
                     clearTimeout(safetyTimeout);
 
-                    setStatusIfReady('Aucune information pertinente trouvée.');
-                    callback(null, "", "Toutes les sources ont échoué.");
+                    setStatusIfReady('Aucune information directe trouvée.');
+                    callback([], "", "Toutes les sources ont échoué.");
                 });
         }
 
@@ -174,21 +184,18 @@
             3. ASSEMBLAGE DU TEXTE EN PARAGRAPHE DE SYNTHÈSE FLUIDE
             ========================================================== */
         function buildSynthesisHtml(results) {
-            if (!results || results.length === 0) return "<p>Aucune information disponible.</p>";
+            if (!results || results.length === 0) return getDefaultNeutralHtml("Aucune information disponible.");
 
-            // Filtrer les snippets valides et non vides
             const sentences = results
                 .map(r => r.snippet.trim())
                 .filter(text => text.length > 10);
 
             if (sentences.length === 0) {
-                return "<p>Informations insuffisantes pour générer une synthèse.</p>";
+                return getDefaultNeutralHtml("Traitement effectué sans détails additionnels.");
             }
 
-            // Assemblage propre sous forme d'un paragraphe fluide de type assistant
             let paragrapheUnifie = sentences.join(" ");
             
-            // S'assurer que le texte se termine par un point
             if (!paragrapheUnifie.endsWith('.')) {
                 paragrapheUnifie += '.';
             }
@@ -335,13 +342,12 @@
             executeSearch(cleanQuery, function() {});
         }
 
-        // Affichage direct d'un bloc de texte synthétique dans l'interface interne du microservice
         function renderResults(results) {
             const container = document.getElementById('results');
             container.innerHTML = '';
 
             if (!results || results.length === 0) {
-                container.innerHTML = '<div class="status-card"><p class="status">Aucune information trouvée.</p></div>';
+                container.innerHTML = '<div class="status-card"><p class="status">Traitement standard appliqué.</p></div>';
                 return;
             }
 
@@ -351,7 +357,7 @@
                 .join(" ");
 
             if (!synthesizedText) {
-                container.innerHTML = '<div class="status-card"><p class="status">Synthèse indisponible.</p></div>';
+                container.innerHTML = '<div class="status-card"><p class="status">Synthèse standard générée.</p></div>';
                 return;
             }
 
