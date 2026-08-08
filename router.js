@@ -17,8 +17,8 @@ class Router {
   constructor({ registryUrl = "./registry.json", onLog = () => {} } = {}) {
     this.registryUrl = registryUrl;
     this.registry = null;             // Contenu chargé du registre
-    this.onLog = onLog;             // Callback UI pour afficher la trace en direct
-    this.journal = [];              // Historique local complet (traçabilité)
+    this.onLog = onLog;               // Callback UI pour afficher la trace en direct
+    this.journal = [];                // Historique local complet (traçabilité)
   }
 
   /**
@@ -101,7 +101,7 @@ class Router {
 
   /**
    * Appelle un micro-service distant via iframe + postMessage,
-   * filtre le JSON brut et isole uniquement le contenu textuel/HTML propre.
+   * extrait proprement les snippets pour générer un paragraphe de synthèse.
    */
   appelerService(service, payload) {
     return new Promise((resolve, reject) => {
@@ -137,25 +137,32 @@ class Router {
         });
 
         const resultatBrut = data.result || {};
-        
-        // Extraction exclusive de la propriété HTML propre ou construction de cartes (zéro JSON brut)
-        let contenuUI = resultatBrut.reponse || "";
-        
-        if (!contenuUI && resultatBrut.resultats && Array.isArray(resultatBrut.resultats)) {
-          let html = "<div style='display:flex; flex-direction:column; gap:10px;'>";
-          resultatBrut.resultats.forEach(r => {
-            html += `<div style='background:#ffffff; padding:14px; border-radius:10px; border:1px solid #E3E0D8;'>
-                <h4 style='margin:0 0 6px 0; font-size:1rem;'><a href='${r.url}' target='_blank' style='color:#1A1A1A; text-decoration:none;'>${r.title}</a></h4>
-                <p style='margin:0; color:#666666; font-size:0.9rem; line-height:1.4;'>${r.snippet}</p>
-            </div>`;
-          });
-          html += "</div>";
-          contenuUI = html;
+        let contenuUI = "";
+
+        // 1. Si le micro-service renvoie déjà une réponse textuelle/HTML formatée
+        if (resultatBrut.reponse && typeof resultatBrut.reponse === 'string' && resultatBrut.reponse.trim().length > 0) {
+          contenuUI = resultatBrut.reponse;
+        } 
+        // 2. Si le micro-service renvoie un tableau de résultats/snippets (cas recherche)
+        else if (resultatBrut.resultats && Array.isArray(resultatBrut.resultats) && resultatBrut.resultats.length > 0) {
+          const phrases = resultatBrut.resultats
+            .map(r => (r.snippet || r.title || '').trim())
+            .filter(text => text.length > 10);
+
+          if (phrases.length > 0) {
+            let texteUnifie = phrases.join(" ");
+            if (!texteUnifie.endsWith('.')) {
+              texteUnifie += '.';
+            }
+            // Injection explicite en tant que paragraphe de synthèse fluide (contexte textuel)
+            contenuUI = `<p style="margin: 0; line-height: 1.6;">${texteUnifie}</p>`;
+          }
         }
 
-        // Fallback ultime sur les autres types de données texte si aucune structure HTML n'est trouvée
+        // 3. Fallback ultime si aucun contenu n'a pu être extrait des snippets ou de la réponse
         if (!contenuUI) {
-          contenuUI = `<p style="margin:0; color:#1A1A1A;">${resultatBrut.texte || resultatBrut.expression || JSON.stringify(resultatBrut)}</p>`;
+          const fallbackText = resultatBrut.texte || resultatBrut.expression || JSON.stringify(resultatBrut);
+          contenuUI = `<p style="margin: 0; line-height: 1.6; color: #1A1A1A;">${fallbackText}</p>`;
         }
 
         resolve({
