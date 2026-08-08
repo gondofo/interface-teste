@@ -125,10 +125,10 @@
   .message.systeme{ align-self:flex-start; align-items:flex-start; width:100%; }
 
   .bulle{
-    padding:11px 15px;
+    padding:12px 16px;
     border-radius:16px;
     font-size:14.5px;
-    line-height:1.55;
+    line-height:1.6;
     word-break:break-word;
     width:100%;
   }
@@ -153,7 +153,7 @@
     font-style:italic;
   }
 
-  /* Métadonnées de routage (traçabilité), repliables, sous chaque réponse système */
+  /* Métadonnées de routage (traçabilité) */
   .meta{
     margin-top:5px;
     font-family:var(--mono);
@@ -270,7 +270,6 @@
   button.envoyer:active{ transform:scale(.96); }
   button.envoyer:disabled{ opacity:.35; cursor:not-allowed; }
 
-  /* Scrollbar discrète */
   #fil::-webkit-scrollbar{ width:6px; }
   #fil::-webkit-scrollbar-thumb{ background:var(--line); border-radius:3px; }
 </style>
@@ -287,21 +286,19 @@
     </div>
   </header>
 
-  <!-- Conteneur de discussion central -->
   <div id="fil">
     <div class="fil-interieur" id="filInterieur">
       <div class="accueil" id="accueil">
         Écrivez une tâche pour l'<strong>Interface Mère</strong> — elle sera automatiquement
         routée vers le micro-service compétent.<br>
-        Exemples : « calcule 12 * (4+2) », « résume ce texte… », « traduis bonjour en anglais ».
+        Exemples : « calcule 12 * (4+2) », « qui est Albert Einstein ? », « traduis bonjour en anglais ».
       </div>
     </div>
   </div>
 
-  <!-- Barre de saisie fixe -->
   <div id="barre-saisie">
     <form id="formPrompt">
-      <button type="button" class="bouton-plus" id="boutonPlus" title="Ajouter un fichier ou une image (à venir)">+</button>
+      <button type="button" class="bouton-plus" id="boutonPlus" title="Ajouter un fichier">+</button>
       <textarea id="champPrompt" rows="1" placeholder="Écrire un message…" autofocus></textarea>
       <button type="submit" class="envoyer" id="btnEnvoyer">Envoyer</button>
     </form>
@@ -348,11 +345,10 @@
       const bulleEl = document.createElement('div');
       bulleEl.className = 'bulle' + (options.etat ? ` ${options.etat}` : '');
       
-      // Utilisation directe de innerHTML pour que le HTML se transforme en vrais éléments visuels
       if (role === 'utilisateur') {
-        bulleEl.textContent = contenuHTML; // Texte sécurisé pour l'utilisateur
+        bulleEl.textContent = contenuHTML;
       } else {
-        bulleEl.innerHTML = contenuHTML; // HTML pur pour le système / cartes de services
+        bulleEl.innerHTML = contenuHTML;
       }
 
       messageEl.appendChild(bulleEl);
@@ -364,7 +360,7 @@
     function mettreAJourMessage(messageEl, contenuHTML, etat) {
       const bulleEl = messageEl.querySelector('.bulle');
       bulleEl.className = 'bulle' + (etat ? ` ${etat}` : '');
-      bulleEl.innerHTML = contenuHTML; // Injection directe des cartes HTML
+      bulleEl.innerHTML = contenuHTML;
       defilerVersLeBas();
     }
 
@@ -446,30 +442,35 @@
       }
     });
 
-    /** Formate et extrait le HTML propre du résultat en ignorant les structures de données brutes. */
+    /** 
+     * Formate le résultat reçu du micro-service.
+     * Privilégie un affichage sous forme de paragraphe rédigé/synthétique (ex: recherche web)
+     * au lieu de cartes ou de JSON brut.
+     */
     function formaterResultat(resultat) {
-      // 1. Si le micro-service a renvoyé directement une propriété HTML formatée (ex: "reponse")
-      if (resultat.reponse && typeof resultat.reponse === 'string' && resultat.reponse.trim().startsWith('<')) {
-        return resultat.reponse;
-      }
-      if (resultat.html && typeof resultat.html === 'string') {
-        return resultat.html;
+      // 1. Si le micro-service renvoie un champ 'reponse' contenant du texte ou du HTML de synthèse
+      if (resultat.reponse && typeof resultat.reponse === 'string') {
+        // Si c'est du HTML formaté propre (provenant du micro-service de recherche mis à jour)
+        if (resultat.reponse.trim().startsWith('<')) {
+          return resultat.reponse;
+        }
+        return `<p style="margin:0; line-height:1.6;">${echapperHTML(resultat.reponse)}</p>`;
       }
 
-      // 2. Si le résultat contient un tableau structuré (ex: resultats de recherche)
+      // 2. Si le résultat contient un tableau de résultats bruts de recherche, on assemble les snippets en un paragraphe fluide
       if (resultat.resultats && Array.isArray(resultat.resultats)) {
-        let html = "<div style='display:flex; flex-direction:column; gap:10px;'>";
-        resultat.resultats.forEach(r => {
-          html += `<div style='background:#1a1f28; padding:12px; border-radius:10px; border:1px solid var(--line);'>
-              <h4 style='margin:0 0 6px 0; font-size:1rem;'><a href='${r.url}' target='_blank' style='color:var(--accent); text-decoration:none;'>${echapperHTML(r.title)}</a></h4>
-              <p style='margin:0; color:var(--muted); font-size:0.9rem; line-height:1.4;'>${echapperHTML(r.snippet)}</p>
-          </div>`;
-        });
-        html += "</div>";
-        return html;
+        const phrases = resultat.resultats
+          .map(r => (r.snippet || '').trim())
+          .filter(text => text.length > 10);
+
+        if (phrases.length > 0) {
+          let texteUnifie = phrases.join(' ');
+          if (!texteUnifie.endsWith('.')) texteUnifie += '.';
+          return `<p style="margin:0; line-height:1.6;">${echapperHTML(texteUnifie)}</p>`;
+        }
       }
 
-      // 3. Fallback sur une seule clé principale ou affichage textuel propre
+      // 3. Fallback générique pour tout autre type de micro-service (ex: calculatrice)
       const cles = Object.keys(resultat).filter(c => !c.startsWith('_') && c !== 'succes');
       if (cles.length === 0) return 'Réponse vide.';
       
