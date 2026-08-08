@@ -8,19 +8,19 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:            #08090c;
-    --panel:         #14181f;
-    --panel-2:       #1a1f28;
+    --bg:          #08090c;
+    --panel:       #14181f;
+    --panel-2:     #1a1f28;
     --bulle-systeme: #14181f;
     --bulle-user:    #7c9cff;
-    --line:          #212632;
-    --text:          #e7e9ee;
+    --line:        #212632;
+    --text:        #e7e9ee;
     --text-user:     #08090c;
-    --muted:         #6b7280;
-    --accent:        #7c9cff;
+    --muted:       #6b7280;
+    --accent:      #7c9cff;
     --accent-dim:    #35406e;
-    --ok:            #34d399;
-    --err:           #f87171;
+    --ok:          #34d399;
+    --err:         #f87171;
     --mono: 'JetBrains Mono', ui-monospace, monospace;
     --sans: 'Space Grotesk', system-ui, sans-serif;
     --largeur-max: 720px;
@@ -36,7 +36,7 @@
     font-family:var(--sans);
     display:flex;
     flex-direction:column;
-    overflow:hidden; /* le scroll se fait dans #fil, pas dans la page */
+    overflow:hidden;
   }
 
   /* ---------- En-tête ---------- */
@@ -114,7 +114,7 @@
   .message{
     display:flex;
     flex-direction:column;
-    max-width:78%;
+    max-width:85%;
     animation:apparition .22s ease;
   }
   @keyframes apparition{
@@ -125,17 +125,17 @@
   .message.systeme{ align-self:flex-start; align-items:flex-start; }
 
   .bulle{
-    padding:11px 15px;
+    padding:14px 18px;
     border-radius:16px;
     font-size:14.5px;
-    line-height:1.55;
-    white-space:pre-wrap;
+    line-height:1.6;
     word-break:break-word;
   }
   .message.utilisateur .bulle{
     background:var(--bulle-user);
     color:var(--text-user);
     border-bottom-right-radius:4px;
+    white-space:pre-wrap;
   }
   .message.systeme .bulle{
     background:var(--bulle-systeme);
@@ -143,45 +143,53 @@
     color:var(--text);
     border-bottom-left-radius:4px;
   }
-  .message.systeme .bulle.erreur{
-    border-color:rgba(248,113,113,.35);
-    color:#fca5a5;
-  }
   .message.systeme .bulle.attente{
     color:var(--muted);
     font-style:italic;
   }
 
-  /* Métadonnées de routage (traçabilité), repliables, sous chaque réponse système */
-  .meta{
-    margin-top:5px;
-    font-family:var(--mono);
-    font-size:10.5px;
-    color:var(--muted);
-    display:flex;
-    align-items:center;
-    gap:8px;
-    cursor:pointer;
-    user-select:none;
+  /* Mise en forme conversationnelle propre pour les réponses système */
+  .bulle p { margin: 0 0 10px 0; }
+  .bulle p:last-child { margin-bottom: 0; }
+  .bulle ul { margin: 8px 0 12px 20px; padding: 0; }
+  .bulle li { margin-bottom: 6px; }
+
+  /* Sources discrètes en bas de bulle */
+  .sources-conteneur {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+    font-size: 0.85rem;
+    color: var(--muted);
   }
-  .meta:hover{ color:var(--accent); }
-  .meta .puce{ width:5px; height:5px; border-radius:50%; background:var(--ok); }
-  .meta.erreur .puce{ background:var(--err); }
-  .detail-json{
-    display:none;
-    margin-top:6px;
-    padding:10px 12px;
-    background:var(--panel-2);
-    border:1px solid var(--line);
-    border-radius:10px;
-    font-family:var(--mono);
-    font-size:11px;
-    color:var(--muted);
-    white-space:pre-wrap;
-    word-break:break-word;
-    max-width:100%;
+  .sources-titre {
+    font-weight: 500;
+    margin-bottom: 4px;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
-  .detail-json.ouvert{ display:block; }
+  .sources-liste {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .sources-liste li a {
+    color: var(--accent);
+    text-decoration: none;
+    background: var(--panel-2);
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .sources-liste li a:hover {
+    background: var(--line);
+    border-color: var(--accent-dim);
+  }
 
   /* Points de suspension "en train d'écrire" */
   .points-attente{ display:inline-flex; gap:3px; }
@@ -269,7 +277,6 @@
   button.envoyer:active{ transform:scale(.96); }
   button.envoyer:disabled{ opacity:.35; cursor:not-allowed; }
 
-  /* Scrollbar discrète */
   #fil::-webkit-scrollbar{ width:6px; }
   #fil::-webkit-scrollbar-thumb{ background:var(--line); border-radius:3px; }
 </style>
@@ -308,30 +315,21 @@
 
   <script src="./router.js"></script>
   <script>
-    /**
-     * Script de liaison entre l'Interface Mère (chat) et le Router.
-     * Toute la logique d'orchestration vit dans router.js ; ce bloc traduit
-     * la conversation utilisateur en appels au routeur et affiche les
-     * réponses sous forme de bulles de chat, avec le fil qui défile
-     * automatiquement vers le bas à chaque nouveau message.
-     */
     const filEl        = document.getElementById('fil');
-    const filInt        = document.getElementById('filInterieur');
-    const accueilEl     = document.getElementById('accueil');
-    const form           = document.getElementById('formPrompt');
-    const champ           = document.getElementById('champPrompt');
-    const btn             = document.getElementById('btnEnvoyer');
-    const boutonPlus       = document.getElementById('boutonPlus');
-    const pointReg         = document.getElementById('pointRegistre');
-    const texteReg         = document.getElementById('texteRegistre');
+    const filInt       = document.getElementById('filInterieur');
+    const accueilEl    = document.getElementById('accueil');
+    const form         = document.getElementById('formPrompt');
+    const champ        = document.getElementById('champPrompt');
+    const btn          = document.getElementById('btnEnvoyer');
+    const boutonPlus   = document.getElementById('boutonPlus');
+    const pointReg     = document.getElementById('pointRegistre');
+    const texteReg     = document.getElementById('texteRegistre');
 
-    // Auto-resize du textarea au fil de la saisie
     champ.addEventListener('input', () => {
       champ.style.height = 'auto';
       champ.style.height = Math.min(champ.scrollHeight, 140) + 'px';
     });
 
-    // Entrée = envoyer / Maj+Entrée = nouvelle ligne
     champ.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -339,24 +337,15 @@
       }
     });
 
-    // Bouton "+" : réservé pour de futurs ajouts de fichiers/images
     boutonPlus.addEventListener('click', () => {
       console.info('Ajout de fichier/photo : fonctionnalité à venir.');
     });
 
-    /** Fait défiler le fil de discussion tout en bas. */
     function defilerVersLeBas() {
       filEl.scrollTop = filEl.scrollHeight;
     }
 
-    /**
-     * Ajoute une bulle de message au fil.
-     * @param {'utilisateur'|'systeme'} role
-     * @param {string} texte
-     * @param {object} options - { etat: 'attente'|'erreur'|null }
-     * @returns {HTMLElement} l'élément .message créé
-     */
-    function ajouterMessage(role, texte, options = {}) {
+    function ajouterMessage(role, contenuHtml, options = {}) {
       if (accueilEl) accueilEl.remove();
 
       const messageEl = document.createElement('div');
@@ -364,7 +353,7 @@
 
       const bulleEl = document.createElement('div');
       bulleEl.className = 'bulle' + (options.etat ? ` ${options.etat}` : '');
-      bulleEl.innerHTML = texte;
+      bulleEl.innerHTML = contenuHtml;
 
       messageEl.appendChild(bulleEl);
       filInt.appendChild(messageEl);
@@ -372,43 +361,20 @@
       return messageEl;
     }
 
-    /** Remplace le contenu d'un message existant (utilisé pour l'état "en train d'écrire"). */
-    function mettreAJourMessage(messageEl, texte, etat) {
+    function mettreAJourMessage(messageEl, contenuHtml, options = {}) {
       const bulleEl = messageEl.querySelector('.bulle');
-      bulleEl.className = 'bulle' + (etat ? ` ${etat}` : '');
-      bulleEl.innerHTML = texte;
+      if (options.etat) {
+        bulleEl.className = `bulle ${options.etat}`;
+      } else {
+        bulleEl.className = 'bulle';
+      }
+      bulleEl.innerHTML = contenuHtml;
       defilerVersLeBas();
     }
 
-    /** Ajoute sous une bulle système la ligne de traçabilité repliable (service, durée, JSON brut). */
-    function ajouterMeta(messageEl, resultat) {
-      const succes = resultat && resultat.succes !== false;
-      const metaEl = document.createElement('div');
-      metaEl.className = 'meta' + (succes ? '' : ' erreur');
-
-      const service = resultat?._service || '—';
-      const duree = resultat?._duree_ms != null ? `${resultat._duree_ms} ms` : '';
-      metaEl.innerHTML = `<span class="puce"></span><span>${service}${duree ? ' · ' + duree : ''} · détails</span>`;
-
-      const detailEl = document.createElement('div');
-      detailEl.className = 'detail-json';
-      detailEl.textContent = JSON.stringify(resultat, null, 2);
-
-      metaEl.addEventListener('click', () => detailEl.classList.toggle('ouvert'));
-
-      messageEl.appendChild(metaEl);
-      messageEl.appendChild(detailEl);
-      defilerVersLeBas();
-    }
-
-    // ------------------------------------------------------------------
-    // Initialisation du routeur (logique existante de router.js, inchangée)
-    // ------------------------------------------------------------------
     const router = new Router({
       registryUrl: './registry.json',
       onLog(entree) {
-        // La trace complète reste disponible via router.getJournal() et la
-        // console du navigateur pour le débogage, sans encombrer le chat.
         console.debug('[router]', entree.evenement, entree.details);
       }
     });
@@ -423,21 +389,16 @@
         texteReg.textContent = 'échec du chargement du registre';
       });
 
-    // ------------------------------------------------------------------
-    // Soumission d'un message
-    // ------------------------------------------------------------------
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const prompt = champ.value.trim();
       if (!prompt) return;
 
-      // 1. Bulle utilisateur, alignée à droite
       ajouterMessage('utilisateur', echapperHTML(prompt));
       champ.value = '';
       champ.style.height = 'auto';
       btn.disabled = true;
 
-      // 2. Bulle système temporaire "en train d'écrire", alignée à gauche
       const messageAttente = ajouterMessage(
         'systeme',
         '<span class="points-attente"><span></span><span></span><span></span></span>',
@@ -446,37 +407,69 @@
 
       try {
         const resultat = await router.router(prompt);
-        const succes = resultat && resultat.succes !== false;
-
-        mettreAJourMessage(
-          messageAttente,
-          succes ? formaterResultat(resultat) : `✕ ${echapperHTML(resultat?.erreur || 'Échec inconnu')}`,
-          succes ? null : 'erreur'
-        );
-        ajouterMeta(messageAttente, resultat);
+        const formatage = formaterReponseAssistant(resultat);
+        mettreAJourMessage(messageAttente, formatage.html);
       } catch (err) {
-        mettreAJourMessage(messageAttente, `✕ Erreur : ${echapperHTML(err.message)}`, 'erreur');
+        mettreAJourMessage(messageAttente, `<p>Une erreur est survenue lors du traitement de votre demande.</p>`);
       } finally {
         btn.disabled = false;
         champ.focus();
       }
     });
 
-    /** Formate le résultat JSON d'un micro-service en texte lisible pour la bulle. */
-    function formaterResultat(resultat) {
-      const cles = Object.keys(resultat).filter(c => !c.startsWith('_') && c !== 'succes');
-      if (cles.length === 0) return 'Réponse vide.';
-      // Une seule clé "principale" (cas courant : resume, resultat, texte_traduit…) → affichage brut
-      if (cles.length === 1) {
-        const val = resultat[cles[0]];
-        return typeof val === 'object' ? echapperHTML(JSON.stringify(val)) : echapperHTML(String(val));
+    /** Formate proprement la réponse de l'assistant avec paragraphes aérés et sources discrètes en bas */
+    function formaterReponseAssistant(resultat) {
+      if (!resultat || resultat.succes === false) {
+        return { html: `<p>Je n'ai pas pu aboutir à une réponse satisfaisante pour cette requête.</p>` };
       }
-      return cles
-        .map(c => `<strong>${echapperHTML(c)}</strong> : ${typeof resultat[c] === 'object' ? echapperHTML(JSON.stringify(resultat[c])) : echapperHTML(String(resultat[c]))}`)
-        .join('<br>');
+
+      // Extraction du texte principal (priorité aux clés de synthèse ou résultats textuels)
+      let textePrincipal = '';
+      if (resultat.texteRedige) {
+        textePrincipal = resultat.texteRedige;
+      } else if (resultat.reponse) {
+        // Nettoyage si du HTML brut était passé
+        textePrincipal = resultat.reponse.replace(/<\/?[^>]+(>|$)/g, "");
+      } else {
+        const cles = Object.keys(resultat).filter(c => !c.startsWith('_') && c !== 'succes' && c !== 'resultats');
+        if (cles.length > 0) {
+          const val = resultat[cles[0]];
+          textePrincipal = typeof val === 'object' ? JSON.stringify(val) : String(val);
+        } else {
+          textePrincipal = "Opération effectuée avec succès.";
+        }
+      }
+
+      // Découpage en paragraphes fluides et aérés
+      const paragraphes = textePrincipal
+        .split('\n')
+        .map(p => p.trim())
+        .filter(p => p.length > 0)
+        .map(p => `<p>${echapperHTML(p)}</p>`)
+        .join('');
+
+      // Gestion propre des sources ou liens associés s'ils existent
+      let sourcesHtml = '';
+      const resultatsTab = resultat.resultats || resultat.sources;
+      if (Array.isArray(resultatsTab) && resultatsTab.length > 0) {
+        const liens = resultatsTab
+          .filter(r => r.url && r.title)
+          .map(r => `<li><a href="${echapperHTML(r.url)}" target="_blank" rel="noopener">${echapperHTML(r.title)}</a></li>`)
+          .join('');
+        
+        if (liens) {
+          sourcesHtml = `
+            <div class="sources-conteneur">
+              <div class="sources-titre">Sources associées</div>
+              <ul class="sources-liste">${liens}</ul>
+            </div>
+          `;
+        }
+      }
+
+      return { html: paragraphes + sourcesHtml };
     }
 
-    /** Échappe le HTML pour éviter toute injection lors de l'affichage de texte utilisateur/service. */
     function echapperHTML(str) {
       const div = document.createElement('div');
       div.textContent = str;
