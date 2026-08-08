@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Recherche Web - Wikipédia</title>
+    <title>Recherche Web - Microservice</title>
     <style>
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
@@ -54,7 +54,7 @@
     
     <div class="search-box">
         <input type="text" id="query" placeholder="Entrez votre sujet (ex: Intelligence artificielle)..." onkeypress="checkEnter(event)">
-        <button onclick="performSearch()">Rechercher</button>
+        <button onclick="performManualSearch()">Rechercher</button>
     </div>
     
     <div class="results" id="results">
@@ -62,60 +62,140 @@
     </div>
 
     <script>
-        function checkEnter(event) {
-            if (event.key === 'Enter') {
-                performSearch();
-            }
-        }
-
-        function performSearch() {
-            const query = document.getElementById('query').value.trim();
-            const container = document.getElementById('results');
+        /* ==========================================================
+           1. PROTOCOLE ROUTEUR (iframe-postMessage)
+           ========================================================== */
+        window.addEventListener('message', function(event) {
+            const data = event.data;
             
+            // Ignorer si ce n'est pas une requête de microservice
+            if (!data || data.type !== 'MS_REQUEST') return;
+
+            const requestId = data.requestId;
+            const payload = data.payload || {};
+            
+            // Extrait la requête texte (compatible si le payload est une string ou un objet {query: '...'})
+            const query = typeof payload === 'string' ? payload : (payload.query || payload.texte || '');
+
             if (!query) {
-                container.innerHTML = '<p class="status">Veuillez entrer un mot-clé valide.</p>';
+                // Réponse immédiate en cas de requête vide
+                sendResponse(event.source, requestId, false, "Aucun terme fourni.", []);
                 return;
             }
-            
+
+            // Mettre à jour l'interface visuelle
+            const inputEl = document.getElementById('query');
+            if (inputEl) inputEl.value = query;
+
+            // Exécuter la recherche web
+            executeSearch(query, function(results, error) {
+                if (error) {
+                    sendResponse(event.source, requestId, false, error, []);
+                } else {
+                    sendResponse(event.source, requestId, true, null, results);
+                }
+            });
+        });
+
+        // Fonction pour répondre au routeur parent
+        function sendResponse(targetWindow, requestId, succes, erreur, resultats) {
+            targetWindow.postMessage({
+                type: 'MS_RESPONSE',
+                requestId: requestId,
+                result: {
+                    succes: succes,
+                    erreur: erreur || null,
+                    resultats: resultats
+                }
+            }, '*');
+        }
+
+        /* ==========================================================
+           2. MOTEUR DE RECHERCHE (Wikipédia JSONP avec Anti-Timeout)
+           ========================================================== */
+        function executeSearch(query, callback) {
+            const container = document.getElementById('results');
             container.innerHTML = '<p class="status">Recherche en cours...</p>';
-            
-            // Utilisation de l'API Wikipédia en mode JSONP (contourne CORS nativement)
-            const script = document.createElement('script');
+
             const callbackName = 'wikiCallback_' + Math.round(Math.random() * 100000);
-            
+            const script = document.createElement('script');
+            let hasResponded = false;
+
+            // Sécurité anti-timeout (force une réponse après 3.5s si l'API ne répond pas à temps)
+            const safetyTimeout = setTimeout(function() {
+                if (!hasResponded) {
+                    hasResponded = true;
+                    cleanup();
+                    callback(null, "Délai de recherche dépassé.");
+                }
+            }, 3500);
+
+            function cleanup() {
+                if (window[callbackName]) delete window[callbackName];
+                if (script.parentNode) script.parentNode.removeChild(script);
+            }
+
             window[callbackName] = function(data) {
-                // Nettoyage du script injecté
-                document.body.removeChild(script);
-                delete window[callbackName];
-                
-                container.innerHTML = '';
-                
+                if (hasResponded) return;
+                hasResponded = true;
+                clearTimeout(safetyTimeout);
+                cleanup();
+
                 const titles = data[1] || [];
                 const snippets = data[2] || [];
                 const urls = data[3] || [];
-                
-                if (titles.length === 0) {
-                    container.innerHTML = '<p class="status">Aucun résultat trouvé pour cette recherche.</p>';
-                    return;
-                }
-                
+                const results = [];
+
                 for (let i = 0; i < titles.length; i++) {
-                    const title = titles[i];
-                    const snippet = snippets[i] || 'Pas de description disponible.';
-                    const url = urls[i];
-                    
-                    container.innerHTML += `
-                        <div class="result-item">
-                            <h3><a href="${url}" target="_blank">${title}</a></h3>
-                            <p>${snippet}</p>
-                        </div>
-                    `;
+                    results.push({
+                        title: titles[i],
+                        snippet: snippets[i] || 'Pas de description disponible.',
+                        url: urls[i]
+                    });
                 }
+
+                // Rendu dans l'interface graphique du microservice
+                renderResults(results);
+
+                // Retourne les résultats au callback (pour le routeur)
+                callback(results, null);
             };
-            
+
             const apiUrl = `https://fr.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=5&namespace=0&format=json&callback=${callbackName}`;
             script.src = apiUrl;
             document.body.appendChild(script);
+        }
+
+        /* ==========================================================
+           3. GESTION DE L'INTERFACE UTILISATEUR MANUELLE
+           ========================================================== */
+        function checkEnter(event) {
+            if (event.key === 'Enter') performManualSearch();
+        }
+
+        function performManualSearch() {
+            const query = document.getElementById('query').value.trim();
+            if (!query) return;
+            executeSearch(query, function() {});
+        }
+
+        function renderResults(results) {
+            const container = document.getElementById('results');
+            container.innerHTML = '';
+
+            if (!results || results.length === 0) {
+                container.innerHTML = '<p class="status">Aucun résultat trouvé.</p>';
+                return;
+            }
+
+            results.forEach(r => {
+                container.innerHTML += `
+                    <div class="result-item">
+                        <h3><a href="${r.url}" target="_blank">${r.title}</a></h3>
+                        <p>${r.snippet}</p>
+                    </div>
+                `;
+            });
         }
     </script>
 </body>
