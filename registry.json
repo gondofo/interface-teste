@@ -76,7 +76,7 @@
       "id": "web-search",
       "nom": "Microservice de recherche web",
       "fonction": "Recherche des informations textuelles sur le web et les actualités en temps réel.",
-      "url": "./module/search.html",
+      "url": "./modules/search.html",
       "mots_cles": [
         "recherche", "rechercher", "cherche", "chercher", "trouve", "trouver",
         "web", "internet", "google", "duckduckgo", "information", "informations",
