@@ -6,65 +6,79 @@
 
     <script>
         /* ==========================================================
-           TOUT LE PROTOCOLE ROUTEUR + MOTEUR DE RECHERCHE EST ICI, EN
-           TOUT PREMIER DANS LE <head>, AVANT LE MOINDRE CSS/DOM.
-
-           Objectif : éliminer toute race condition où le routeur
-           enverrait MS_REQUEST avant que la page ait fini de se charger.
-           Ce bloc ne dépend d'AUCUN élément du DOM pour fonctionner —
-           uniquement du réseau et de postMessage — donc il répond même
-           si le <body> n'est pas encore parsé.
+           1. EXTRACTION INTELLIGENTE DES MOTS-CLÉS DE LA REQUÊTE
+           Supprime les mots vides (stop words) pour ne garder que le sujet.
            ========================================================== */
+        function extractKeywords(rawQuery) {
+            if (!rawQuery) return '';
+            
+            // Liste des mots vides en français à ignorer
+            const stopWords = new Set([
+                "le", "la", "les", "un", "une", "des", "et", "ou", "mais", "donc", 
+                "or", "ni", "car", "ce", "cette", "ces", "de", "du", "des", "a", 
+                "à", "en", "par", "pour", "sur", "sous", "dans", "avec", "sans", 
+                "vers", "chez", "que", "qui", "quoi", "dont", "où", "comment", 
+                "pourquoi", "combien", "quel", "quelle", "quels", "quelles", 
+                "est", "sont", "etre", "avoir", "fait", "faire", "dis", "donne", 
+                "montre", "cherche", "recherche", "trouve", "web", "internet", "info", "infos"
+            ]);
 
-        // Délai maximal autorisé pour la recherche AVANT de devoir répondre
-        // au routeur. Doit rester nettement inférieur au timeout du routeur
-        // lui-même. À ajuster dès que vous connaîtrez la valeur exacte.
-        const SEARCH_TIMEOUT_MS = 1800;
+            // Nettoyage, passage en minuscules et découpage en mots
+            const words = rawQuery
+                .toLowerCase()
+                .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, " ")
+                .split(/\s+/);
+
+            // Filtrage des mots significatifs
+            const filtered = words.filter(word => word.length > 2 && !stopWords.has(word));
+
+            // Si le filtre est trop agressif (ex: recherche courte), on renvoie la requête brute
+            if (filtered.length === 0) {
+                return rawQuery.trim();
+            }
+
+            return filtered.join(' ');
+        }
+
+        /* ==========================================================
+           2. PROTOCOLE ROUTEUR + MOTEUR DE RECHERCHE
+           ========================================================== */
+        const SEARCH_TIMEOUT_MS = 2500;
 
         window.addEventListener('message', function(event) {
             const data = event.data;
             if (!data || data.type !== 'MS_REQUEST') return;
 
-            console.log('[search.html] MS_REQUEST reçu à', performance.now().toFixed(0), 'ms, origine =', event.origin, data);
-
             const requestId = data.requestId;
             const payload = data.payload || {};
-            const query = typeof payload === 'string' ? payload : (payload.query || payload.texte || '');
+            const rawQuery = typeof payload === 'string' ? payload : (payload.query || payload.texte || '');
 
-            if (!query) {
+            if (!rawQuery) {
                 sendResponse(event.source, event.origin, requestId, false, "Aucun terme fourni.", []);
                 return;
             }
 
-            setQueryInputIfReady(query);
+            // Application du filtre intelligent
+            const cleanQuery = extractKeywords(rawQuery);
 
-            executeSearch(query, function(results, error) {
+            setQueryInputIfReady(rawQuery); // Affiche la phrase originale dans l'input
+
+            executeSearch(cleanQuery, function(results, error) {
                 if (error) {
                     sendResponse(event.source, event.origin, requestId, false, error, []);
                 } else {
                     sendResponse(event.source, event.origin, requestId, true, null, results);
                 }
-                console.log('[search.html] MS_RESPONSE envoyé à', performance.now().toFixed(0), 'ms');
             });
         });
 
-        // Signale au routeur (parent ou opener) que ce micro-service est prêt
-        // à recevoir des requêtes, dès que le JS s'exécute — potentiellement
-        // avant même que le HTML soit entièrement parsé. Si votre routeur
-        // supporte un handshake ("attendre MS_READY avant d'envoyer
-        // MS_REQUEST"), ceci élimine complètement la race condition au
-        // chargement. Sinon ce message est simplement ignoré, sans effet de
-        // bord.
         (function signalReady() {
             const target = window.parent !== window ? window.parent : (window.opener || null);
             if (target) {
                 target.postMessage({ type: 'MS_READY' }, '*');
-                console.log('[search.html] MS_READY envoyé à', performance.now().toFixed(0), 'ms');
             }
         })();
 
-        // Répond au routeur parent. targetOrigin utilise l'origine reçue
-        // dans event.origin si elle est utilisable, sinon '*' en repli.
         function sendResponse(targetWindow, sourceOrigin, requestId, succes, erreur, resultats) {
             const targetOrigin = (sourceOrigin && sourceOrigin !== 'null') ? sourceOrigin : '*';
             targetWindow.postMessage({
@@ -82,7 +96,6 @@
             return (str || '').replace(/<[^>]*>/g, '');
         }
 
-        // Source A : Wikipédia — API "opensearch" (classique)
         function fetchWikipediaOpenSearch(query, signal) {
             const url = `https://fr.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=5&namespace=0&format=json&origin=*`;
             return fetch(url, { signal }).then(function(response) {
@@ -96,16 +109,15 @@
                 for (let i = 0; i < titles.length; i++) {
                     results.push({
                         title: titles[i],
-                        snippet: snippets[i] || 'Pas de description disponible.',
+                        snippet: snippets[i] || 'Aucun résumé disponible pour cet article.',
                         url: urls[i]
                     });
                 }
-                if (results.length === 0) throw new Error('Aucun résultat (opensearch)');
+                if (results.length === 0) throw new Error('Aucun résultat');
                 return results;
             });
         }
 
-        // Source B : Wikipédia — API REST v1 (endpoint distinct, souvent plus léger/rapide)
         function fetchWikipediaRest(query, signal) {
             const url = `https://fr.wikipedia.org/w/rest.php/v1/search/page?q=${encodeURIComponent(query)}&limit=5`;
             return fetch(url, { signal }).then(function(response) {
@@ -116,36 +128,16 @@
                 const results = pages.map(function(p) {
                     return {
                         title: p.title,
-                        snippet: stripHtml(p.excerpt || p.description) || 'Pas de description disponible.',
+                        snippet: stripHtml(p.excerpt || p.description) || 'Aucun résumé disponible.',
                         url: 'https://fr.wikipedia.org/wiki/' + encodeURIComponent(p.key)
                     };
                 });
-                if (results.length === 0) throw new Error('Aucun résultat (rest v1)');
+                if (results.length === 0) throw new Error('Aucun résultat');
                 return results;
             });
         }
 
-        // Source C : Wikidata — recherche d'entités (bon complément, souvent très rapide)
-        function fetchWikidata(query, signal) {
-            const url = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(query)}&language=fr&limit=5&format=json&origin=*`;
-            return fetch(url, { signal }).then(function(response) {
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                return response.json();
-            }).then(function(data) {
-                const results = (data.search || []).map(function(item) {
-                    return {
-                        title: item.label || item.id,
-                        snippet: item.description || 'Pas de description disponible.',
-                        url: item.concepturi || ('https://www.wikidata.org/wiki/' + item.id)
-                    };
-                });
-                if (results.length === 0) throw new Error('Aucun résultat (wikidata)');
-                return results;
-            });
-        }
-
-        // Liste des sources engagées dans la course. Ajoutez/retirez-en ici.
-        const SEARCH_SOURCES = [fetchWikipediaOpenSearch, fetchWikipediaRest, fetchWikidata];
+        const SEARCH_SOURCES = [fetchWikipediaOpenSearch, fetchWikipediaRest];
 
         function executeSearch(query, callback) {
             setStatusIfReady('Recherche en cours...');
@@ -157,7 +149,7 @@
                 if (!hasResponded) {
                     hasResponded = true;
                     controller.abort();
-                    setStatusIfReady('La recherche prend trop de temps. Réessayez.');
+                    setStatusIfReady('La recherche prend trop de temps.');
                     callback(null, "Délai de recherche dépassé.");
                 }
             }, SEARCH_TIMEOUT_MS);
@@ -181,16 +173,11 @@
                     hasResponded = true;
                     clearTimeout(safetyTimeout);
 
-                    setStatusIfReady('Erreur lors de la recherche.');
+                    setStatusIfReady('Aucun résultat pertinent trouvé.');
                     callback(null, "Toutes les sources ont échoué.");
                 });
         }
 
-        /* ----------------------------------------------------------
-           Petits utilitaires DOM "safe" : ne font rien si le DOM n'est
-           pas encore prêt, pour ne jamais bloquer/planter la réponse
-           au routeur (qui ne dépend, elle, jamais du DOM).
-           ---------------------------------------------------------- */
         function setQueryInputIfReady(query) {
             const inputEl = document.getElementById('query');
             if (inputEl) inputEl.value = query;
@@ -198,7 +185,7 @@
 
         function setStatusIfReady(text) {
             const container = document.getElementById('results');
-            if (container) container.innerHTML = '<p class="status">' + text + '</p>';
+            if (container) container.innerHTML = `<div class="status-card"><p>${text}</p></div>`;
         }
 
         function renderResultsIfReady(results) {
@@ -209,48 +196,131 @@
     </script>
 
     <style>
+        :root {
+            --bg-color: #F7F5F0;
+            --card-bg: #FFFFFF;
+            --text-primary: #1A1A1A;
+            --text-secondary: #666666;
+            --accent: #8C9380;
+            --accent-hover: #757C69;
+            --border: #E3E0D8;
+        }
+
         body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            background: #F5F2EC; 
-            color: #2B2B2B; 
-            max-width: 750px; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; 
+            background: var(--bg-color); 
+            color: var(--text-primary); 
+            max-width: 800px; 
             margin: 40px auto; 
             padding: 20px; 
+            -webkit-font-smoothing: antialiased;
         }
-        h1 { font-size: 1.6rem; color: #2B2B2B; margin-bottom: 20px; }
-        .search-box { display: flex; gap: 10px; margin-bottom: 25px; }
+
+        h1 { 
+            font-size: 1.5rem; 
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: var(--text-primary); 
+            margin-bottom: 20px; 
+        }
+
+        .search-box { 
+            display: flex; 
+            gap: 12px; 
+            margin-bottom: 30px; 
+        }
+
         input[type="text"] { 
             flex: 1; 
-            padding: 12px 15px; 
-            border: 1px solid #A8B09A; 
-            border-radius: 6px; 
-            font-size: 1rem; 
-            background: #fff;
+            padding: 14px 18px; 
+            border: 1px solid var(--border); 
+            border-radius: 10px; 
+            font-size: 0.95rem; 
+            background: var(--card-bg); 
+            color: var(--text-primary);
             outline: none;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
-        input[type="text"]:focus { border-color: #3b5323; }
+
+        input[type="text"]:focus { 
+            border-color: var(--accent); 
+            box-shadow: 0 0 0 3px rgba(140, 147, 128, 0.15);
+        }
+
         button { 
-            background: #A8B09A; 
+            background: var(--accent); 
             color: #fff; 
             border: none; 
-            padding: 12px 20px; 
-            border-radius: 6px; 
-            font-weight: bold; 
+            padding: 0 24px; 
+            border-radius: 10px; 
+            font-weight: 600; 
+            font-size: 0.95rem;
             cursor: pointer; 
+            transition: background 0.2s ease;
         }
-        button:hover { background: #959e86; }
-        .results { display: flex; flex-direction: column; gap: 12px; }
-        .result-item { 
-            background: #fff; 
-            padding: 15px 20px; 
-            border-radius: 8px; 
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+
+        button:hover { 
+            background: var(--accent-hover); 
         }
-        .result-item h3 { margin: 0 0 8px 0; font-size: 1.1rem; }
-        .result-item a { color: #3b5323; text-decoration: none; font-weight: 600; }
-        .result-item a:hover { text-decoration: underline; }
-        .result-item p { margin: 0; color: #555; font-size: 0.95rem; line-height: 1.4; }
-        .status { color: #666; font-style: italic; }
+
+        .results { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 16px; 
+        }
+
+        .result-card { 
+            background: var(--card-bg); 
+            padding: 22px; 
+            border-radius: 12px; 
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .result-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04);
+        }
+
+        .result-card h3 { 
+            margin: 0 0 8px 0; 
+            font-size: 1.15rem; 
+            font-weight: 600;
+        }
+
+        .result-card a { 
+            color: var(--text-primary); 
+            text-decoration: none; 
+            transition: color 0.15s ease;
+        }
+
+        .result-card a:hover { 
+            color: var(--accent-hover); 
+            text-decoration: underline; 
+        }
+
+        .result-card p { 
+            margin: 0; 
+            color: var(--text-secondary); 
+            font-size: 0.95rem; 
+            line-height: 1.5; 
+        }
+
+        .status-card {
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .status { 
+            color: var(--text-secondary); 
+            font-style: normal; 
+            font-size: 0.95rem;
+            margin: 0;
+        }
     </style>
 </head>
 <body>
@@ -258,28 +328,27 @@
     <h1>Recherche d'informations</h1>
     
     <div class="search-box">
-        <input type="text" id="query" placeholder="Entrez votre sujet (ex: Intelligence artificielle)..." onkeypress="checkEnter(event)">
+        <input type="text" id="query" placeholder="Entrez votre sujet ou posez une question..." onkeypress="checkEnter(event)">
         <button onclick="performManualSearch()">Rechercher</button>
     </div>
     
     <div class="results" id="results">
-        <p class="status">Entrez un terme ci-dessus pour lancer la recherche.</p>
+        <div class="status-card">
+            <p class="status">Entrez un terme ci-dessus pour lancer la recherche.</p>
+        </div>
     </div>
 
     <script>
-        /* ==========================================================
-           UI MANUELLE UNIQUEMENT (utilisée si on ouvre la page seul,
-           hors iframe du routeur). Le protocole routeur ci-dessus n'en
-           dépend pas.
-           ========================================================== */
         function checkEnter(event) {
             if (event.key === 'Enter') performManualSearch();
         }
 
         function performManualSearch() {
-            const query = document.getElementById('query').value.trim();
-            if (!query) return;
-            executeSearch(query, function() {});
+            const rawQuery = document.getElementById('query').value.trim();
+            if (!rawQuery) return;
+            
+            const cleanQuery = extractKeywords(rawQuery);
+            executeSearch(cleanQuery, function() {});
         }
 
         function renderResults(results) {
@@ -287,13 +356,13 @@
             container.innerHTML = '';
 
             if (!results || results.length === 0) {
-                container.innerHTML = '<p class="status">Aucun résultat trouvé.</p>';
+                container.innerHTML = '<div class="status-card"><p class="status">Aucun résultat trouvé.</p></div>';
                 return;
             }
 
             results.forEach(r => {
                 container.innerHTML += `
-                    <div class="result-item">
+                    <div class="result-card">
                         <h3><a href="${r.url}" target="_blank">${r.title}</a></h3>
                         <p>${r.snippet}</p>
                     </div>
