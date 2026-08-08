@@ -11,7 +11,6 @@
     --paper: #fbfaf8;
     --line: #e6e2db;
     --accent: #2f5d50;
-    --accent-soft: #ecf1ef;
   }
 
   * { box-sizing: border-box; }
@@ -67,10 +66,7 @@
   .rm-button:active { transform: scale(0.98); }
   .rm-button:disabled { opacity: .55; cursor: default; }
 
-  .rm-output {
-    margin-top: 22px;
-    min-height: 0;
-  }
+  .rm-output { margin-top: 22px; }
 
   .rm-loading {
     display: none;
@@ -84,9 +80,7 @@
   .rm-loading.active { display: flex; }
 
   .rm-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
+    width: 6px; height: 6px; border-radius: 50%;
     background: var(--accent);
     animation: rm-pulse 1.1s ease-in-out infinite;
   }
@@ -95,6 +89,22 @@
   @keyframes rm-pulse {
     0%, 80%, 100% { opacity: .25; transform: scale(0.85); }
     40% { opacity: 1; transform: scale(1); }
+  }
+
+  .rm-progress-track {
+    display: none;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--line);
+    overflow: hidden;
+    margin: 10px 0 0 0;
+  }
+  .rm-progress-track.active { display: block; }
+  .rm-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width .2s ease;
   }
 
   .rm-article {
@@ -123,11 +133,7 @@
     margin-bottom: 8px;
   }
 
-  .rm-source-list {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
+  .rm-source-list { display: flex; flex-direction: column; gap: 5px; }
 
   .rm-source-link {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -153,24 +159,20 @@
 
 <div id="recherche-module">
   <div class="rm-bar">
-    <input
-      type="text"
-      class="rm-input"
-      id="rm-input"
-      placeholder="Fais une recherche sur…"
-      autocomplete="off"
-    />
+    <input type="text" class="rm-input" id="rm-input" placeholder="Fais une recherche sur…" autocomplete="off" />
     <button class="rm-button" id="rm-button">Rechercher</button>
   </div>
 
   <div class="rm-output">
     <div class="rm-loading" id="rm-loading">
       <span class="rm-dot"></span><span class="rm-dot"></span><span class="rm-dot"></span>
-      <span>Recherche en cours…</span>
+      <span id="rm-loading-label">Recherche en cours…</span>
+    </div>
+    <div class="rm-progress-track" id="rm-progress-track">
+      <div class="rm-progress-fill" id="rm-progress-fill"></div>
     </div>
 
     <div class="rm-empty" id="rm-empty">Aucun résultat à afficher pour l'instant.</div>
-
     <div class="rm-article" id="rm-article"></div>
 
     <div class="rm-sources" id="rm-sources">
@@ -180,292 +182,296 @@
   </div>
 </div>
 
-<script>
-(function () {
-  "use strict";
+<script type="module">
+import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0";
 
-  // ---------------------------------------------------------------------
-  // Références DOM
-  // ---------------------------------------------------------------------
-  const input       = document.getElementById("rm-input");
-  const button       = document.getElementById("rm-button");
-  const loadingEl     = document.getElementById("rm-loading");
-  const emptyEl       = document.getElementById("rm-empty");
-  const articleEl     = document.getElementById("rm-article");
-  const sourcesEl     = document.getElementById("rm-sources");
-  const sourceListEl  = document.getElementById("rm-source-list");
+// Le modèle est mis en cache par le navigateur après le premier chargement
+// (IndexedDB) : les visites suivantes seront quasi instantanées.
+env.allowLocalModels = false;
 
-  // ---------------------------------------------------------------------
-  // 1. Nettoyage du prompt : on ne garde que le sujet clé
-  // ---------------------------------------------------------------------
-  function extraireSujet(brut) {
-    let texte = (brut || "").trim();
-    if (!texte) return "";
+const MODEL_ID = "onnx-community/Qwen2.5-0.5B-Instruct";
 
-    const declencheurs = [
-      /^fais\s+une\s+recherche\s+sur\s+/i,
-      /^fait\s+une\s+recherche\s+sur\s+/i,
-      /^lance\s+une\s+recherche\s+sur\s+/i,
-      /^effectue\s+une\s+recherche\s+sur\s+/i,
-      /^recherche\s+sur\s+/i,
-      /^recherche\s+/i,
-      /^cherche\s+des\s+informations?\s+sur\s+/i,
-      /^cherche\s+sur\s+/i,
-      /^cherche\s+/i,
-      /^peux[- ]tu\s+chercher\s+(des\s+informations?\s+)?sur\s+/i,
-      /^peux[- ]tu\s+faire\s+une\s+recherche\s+sur\s+/i,
-      /^dis[- ]moi\s+en\s+plus\s+sur\s+/i,
-      /^parle[- ]moi\s+de\s+/i,
-      /^explique[- ]moi\s+/i,
-      /^donne[- ]moi\s+des\s+informations?\s+sur\s+/i,
-      /^j[’']aimerais\s+en\s+savoir\s+plus\s+sur\s+/i,
-      /^informations?\s+sur\s+/i,
-      /^qu['’]est[- ]ce\s+que\s+/i,
-      /^qui\s+est\s+/i,
-      /^qu['’]en\s+est[- ]il\s+de\s+/i
-    ];
+const input          = document.getElementById("rm-input");
+const button          = document.getElementById("rm-button");
+const loadingEl        = document.getElementById("rm-loading");
+const loadingLabelEl   = document.getElementById("rm-loading-label");
+const progressTrackEl  = document.getElementById("rm-progress-track");
+const progressFillEl   = document.getElementById("rm-progress-fill");
+const emptyEl          = document.getElementById("rm-empty");
+const articleEl        = document.getElementById("rm-article");
+const sourcesEl        = document.getElementById("rm-sources");
+const sourceListEl     = document.getElementById("rm-source-list");
 
-    for (const motif of declencheurs) {
-      if (motif.test(texte)) {
-        texte = texte.replace(motif, "");
-        break;
+let generateur = null;
+let chargementEnCours = null;
+
+// ---------------------------------------------------------------------
+// 1. Nettoyage du prompt : on ne garde que le sujet clé
+// ---------------------------------------------------------------------
+function extraireSujet(brut) {
+  let texte = (brut || "").trim();
+  if (!texte) return "";
+
+  const declencheurs = [
+    /^fais\s+une\s+recherche\s+sur\s+/i,
+    /^fait\s+une\s+recherche\s+sur\s+/i,
+    /^lance\s+une\s+recherche\s+sur\s+/i,
+    /^effectue\s+une\s+recherche\s+sur\s+/i,
+    /^recherche\s+sur\s+/i,
+    /^recherche\s+/i,
+    /^cherche\s+des\s+informations?\s+sur\s+/i,
+    /^cherche\s+sur\s+/i,
+    /^cherche\s+/i,
+    /^peux[- ]tu\s+chercher\s+(des\s+informations?\s+)?sur\s+/i,
+    /^peux[- ]tu\s+faire\s+une\s+recherche\s+sur\s+/i,
+    /^dis[- ]moi\s+en\s+plus\s+sur\s+/i,
+    /^parle[- ]moi\s+de\s+/i,
+    /^explique[- ]moi\s+/i,
+    /^donne[- ]moi\s+des\s+informations?\s+sur\s+/i,
+    /^j[’']aimerais\s+en\s+savoir\s+plus\s+sur\s+/i,
+    /^informations?\s+sur\s+/i,
+    /^qu['’]est[- ]ce\s+que\s+/i,
+    /^qui\s+est\s+/i,
+    /^qu['’]en\s+est[- ]il\s+de\s+/i
+  ];
+
+  for (const motif of declencheurs) {
+    if (motif.test(texte)) { texte = texte.replace(motif, ""); break; }
+  }
+  texte = texte.replace(/[?.!]+$/g, "").trim();
+  return texte || (brut || "").trim();
+}
+
+// ---------------------------------------------------------------------
+// 2. Recherche : API Wikipédia (gratuite, sans clé, CORS ouvert)
+//    -> pas de "page qui refuse la lecture" : on ne lit jamais de page
+//       arbitraire, on ne consomme que l'extrait structuré fourni par
+//       l'API elle-même. Le repli sur l'extrait est donc natif.
+// ---------------------------------------------------------------------
+async function rechercherWikipedia(sujet) {
+  const rechercheUrl =
+    "https://fr.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=3&srsearch=" +
+    encodeURIComponent(sujet);
+
+  const rechercheReponse = await fetch(rechercheUrl);
+  if (!rechercheReponse.ok) return [];
+  const rechercheData = await rechercheReponse.json();
+  const resultats = (rechercheData?.query?.search) || [];
+  if (resultats.length === 0) return [];
+
+  const titres = resultats.slice(0, 2).map(function (r) { return r.title; });
+
+  const extraitUrl =
+    "https://fr.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&format=json&origin=*&titles=" +
+    encodeURIComponent(titres.join("|"));
+
+  const extraitReponse = await fetch(extraitUrl);
+  if (!extraitReponse.ok) return [];
+  const extraitData = await extraitReponse.json();
+  const pages = extraitData?.query?.pages || {};
+
+  return Object.values(pages)
+    .filter(function (p) { return p && p.extract && p.extract.trim().length > 40; })
+    .map(function (p) {
+      return {
+        titre: p.title,
+        extrait: p.extract.trim().slice(0, 1200),
+        url: "https://fr.wikipedia.org/wiki/" + encodeURIComponent(p.title.replace(/ /g, "_"))
+      };
+    });
+}
+
+// ---------------------------------------------------------------------
+// 3. Chargement paresseux du petit modèle local (une seule fois)
+// ---------------------------------------------------------------------
+async function obtenirGenerateur() {
+  if (generateur) return generateur;
+  if (chargementEnCours) return chargementEnCours;
+
+  chargementEnCours = pipeline("text-generation", MODEL_ID, {
+    dtype: "q4",
+    progress_callback: function (info) {
+      if (info.status === "progress" && typeof info.progress === "number") {
+        progressTrackEl.classList.add("active");
+        progressFillEl.style.width = Math.round(info.progress) + "%";
+        loadingLabelEl.textContent = "Chargement du modèle local (" + Math.round(info.progress) + "%)…";
       }
     }
+  });
 
-    texte = texte.replace(/[?.!]+$/g, "").trim();
-    return texte || (brut || "").trim();
+  generateur = await chargementEnCours;
+  progressTrackEl.classList.remove("active");
+  return generateur;
+}
+
+// ---------------------------------------------------------------------
+// 4. Rédaction : le petit modèle reformule les extraits en texte fluide
+// ---------------------------------------------------------------------
+async function redigerDepuisExtraits(sujet, sources) {
+  const gen = await obtenirGenerateur();
+
+  const contexte = sources
+    .map(function (s, i) { return "Extrait " + (i + 1) + " (" + s.titre + ") : " + s.extrait; })
+    .join("\n\n");
+
+  const messages = [
+    {
+      role: "system",
+      content: "Tu rédiges en français un paragraphe informatif, fluide et naturel à partir d'extraits fournis. " +
+        "Interdiction d'utiliser des formulations robotiques comme \"l'examen des données collectées\" ou " +
+        "\"les résultats indiquent que\". N'invente jamais un message d'erreur, un JSON ou une balise technique : " +
+        "produis uniquement le texte rédigé, en 1 à 3 paragraphes, rien d'autre."
+    },
+    {
+      role: "user",
+      content: "Sujet : " + sujet + "\n\nExtraits sources :\n" + contexte +
+        "\n\nRédige le texte de synthèse maintenant."
+    }
+  ];
+
+  loadingLabelEl.textContent = "Rédaction en cours…";
+
+  const sortie = await gen(messages, {
+    max_new_tokens: 320,
+    temperature: 0.6,
+    do_sample: true,
+    top_p: 0.9,
+    return_full_text: false
+  });
+
+  const brut = sortie?.[0]?.generated_text;
+  let texte = "";
+  if (typeof brut === "string") {
+    texte = brut;
+  } else if (Array.isArray(brut)) {
+    const dernier = brut[brut.length - 1];
+    texte = (dernier && typeof dernier.content === "string") ? dernier.content : "";
   }
+  return texte.trim();
+}
 
-  // ---------------------------------------------------------------------
-  // 2. Appel au modèle de rédaction intégré (recherche + rédaction)
-  // ---------------------------------------------------------------------
-  const SYSTEM_PROMPT = `Tu es un module de recherche et de rédaction intégré à une interface applicative. Tu ne t'adresses jamais directement à un utilisateur final : ta seule sortie doit être un objet JSON strict, destiné à être consommé par un programme.
+// ---------------------------------------------------------------------
+// 5. Rendu : uniquement le texte fluide + liens de sources discrets
+// ---------------------------------------------------------------------
+function afficherResultat(resultat) {
+  const article = (resultat.article || "").trim();
+  const sources = Array.isArray(resultat.sources) ? resultat.sources : [];
 
-Consignes :
-1. Utilise l'outil de recherche web pour rassembler des informations fiables et à jour sur le sujet fourni.
-2. Si une page ne peut pas être lue directement ou ne renvoie aucun contenu exploitable, base-toi automatiquement sur les extraits (snippets) fournis par les résultats de recherche, sans jamais signaler ce basculement ni produire un quelconque message technique à ce sujet.
-3. Rédige un texte fluide, naturel et informatif en français, comme le ferait un rédacteur humain compétent. Interdiction stricte d'utiliser des formulations robotiques ou génériques telles que "l'examen des données collectées...", "les résultats de la recherche indiquent que...", "suite à une analyse...", ou toute variante de ce type. Le texte doit se lire comme un article ou une note bien écrite, avec une structure claire (2 à 4 paragraphes selon le sujet), sans puces ni titres.
-4. N'inclus jamais de JSON brut, de balises techniques, de code, de messages d'erreur, ou des mentions comme "erreur", "aucun contenu textuel exploitable", "null", etc. dans le texte rédigé. Si les informations trouvées sont limitées, rédige tout de même un texte honnête et naturel qui présente ce qui est connu du sujet, sans jamais formuler cela comme un échec technique.
-5. Réponds UNIQUEMENT avec un objet JSON valide, sans aucun texte avant ou après, sans balises markdown ni triple backticks, au format exact suivant :
-{"article": "texte rédigé ici", "sources": [{"titre": "titre court de la source", "url": "https://..."}]}
-Le tableau "sources" doit contenir uniquement des sources réellement utilisées, avec des URL valides. Si aucune source fiable n'a été trouvée, renvoie un tableau vide.`;
+  if (!article) { afficherEtatVide(); return; }
 
-  async function interrogerModele(sujet) {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1500,
-        system: SYSTEM_PROMPT,
-        messages: [
-          { role: "user", content: `Sujet à rechercher et rédiger : ${sujet}` }
-        ],
-        tools: [
-          { type: "web_search_20250305", name: "web_search" }
-        ]
-      })
+  articleEl.textContent = article;
+  articleEl.classList.add("active");
+
+  sourceListEl.innerHTML = "";
+  if (sources.length > 0) {
+    sources.forEach(function (s) {
+      const lien = document.createElement("a");
+      lien.className = "rm-source-link";
+      lien.href = s.url;
+      lien.target = "_blank";
+      lien.rel = "noopener noreferrer";
+      lien.textContent = s.titre || s.url;
+      sourceListEl.appendChild(lien);
     });
-
-    if (!response.ok) {
-      throw new Error("network_error");
-    }
-
-    const data = await response.json();
-
-    const texteBrut = (data.content || [])
-      .filter(function (bloc) { return bloc.type === "text"; })
-      .map(function (bloc) { return bloc.text; })
-      .join("\n")
-      .trim();
-
-    if (!texteBrut) {
-      throw new Error("empty_response");
-    }
-
-    return texteBrut;
-  }
-
-  // ---------------------------------------------------------------------
-  // 3. Extraction sûre du JSON, quelle que soit l'enrobage du modèle
-  // ---------------------------------------------------------------------
-  function extraireJSON(texte) {
-    let nettoye = texte.trim();
-
-    nettoye = nettoye.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
-
-    try {
-      return JSON.parse(nettoye);
-    } catch (e) {
-      const debut = nettoye.indexOf("{");
-      const fin = nettoye.lastIndexOf("}");
-      if (debut !== -1 && fin !== -1 && fin > debut) {
-        const fragment = nettoye.slice(debut, fin + 1);
-        try {
-          return JSON.parse(fragment);
-        } catch (e2) {
-          return null;
-        }
-      }
-      return null;
-    }
-  }
-
-  // ---------------------------------------------------------------------
-  // 4. Rendu : uniquement du texte fluide + liens de sources discrets
-  // ---------------------------------------------------------------------
-  function afficherResultat(objet) {
-    const article = (objet && typeof objet.article === "string") ? objet.article.trim() : "";
-    const sources = (objet && Array.isArray(objet.sources)) ? objet.sources : [];
-
-    if (!article) {
-      afficherEtatVide();
-      return;
-    }
-
-    articleEl.textContent = article;
-    articleEl.classList.add("active");
-
-    sourceListEl.innerHTML = "";
-    const sourcesValides = sources.filter(function (s) {
-      return s && typeof s.url === "string" && /^https?:\/\//i.test(s.url);
-    });
-
-    if (sourcesValides.length > 0) {
-      sourcesValides.forEach(function (s) {
-        const lien = document.createElement("a");
-        lien.className = "rm-source-link";
-        lien.href = s.url;
-        lien.target = "_blank";
-        lien.rel = "noopener noreferrer";
-        lien.textContent = (s.titre && s.titre.trim()) ? s.titre.trim() : s.url;
-        sourceListEl.appendChild(lien);
-      });
-      sourcesEl.classList.add("active");
-    } else {
-      sourcesEl.classList.remove("active");
-    }
-
-    emptyEl.classList.remove("active");
-  }
-
-  function afficherEtatVide() {
-    articleEl.classList.remove("active");
+    sourcesEl.classList.add("active");
+  } else {
     sourcesEl.classList.remove("active");
-    emptyEl.classList.add("active");
+  }
+  emptyEl.classList.remove("active");
+}
+
+function afficherEtatVide() {
+  articleEl.classList.remove("active");
+  sourcesEl.classList.remove("active");
+  emptyEl.classList.add("active");
+}
+
+function reinitialiserAffichage() {
+  articleEl.classList.remove("active");
+  articleEl.textContent = "";
+  sourcesEl.classList.remove("active");
+  sourceListEl.innerHTML = "";
+  emptyEl.classList.remove("active");
+}
+
+// ---------------------------------------------------------------------
+// 6. Orchestration principale — toujours { article, sources }, jamais
+//    d'exception qui remonte, jamais de fragment technique affiché.
+// ---------------------------------------------------------------------
+async function lancerRecherche(promptExterne) {
+  const promptBrut = (typeof promptExterne === "string") ? promptExterne : input.value;
+  if (typeof promptExterne === "string") input.value = promptExterne;
+
+  const sujet = extraireSujet(promptBrut);
+  if (!sujet) {
+    afficherEtatVide();
+    const vide = { article: "", sources: [] };
+    emettreVersInterfaceMere(vide);
+    return vide;
   }
 
-  function reinitialiserAffichage() {
-    articleEl.classList.remove("active");
-    articleEl.textContent = "";
-    sourcesEl.classList.remove("active");
-    sourceListEl.innerHTML = "";
-    emptyEl.classList.remove("active");
-  }
+  reinitialiserAffichage();
+  loadingLabelEl.textContent = "Recherche en cours…";
+  loadingEl.classList.add("active");
+  button.disabled = true;
 
-  // ---------------------------------------------------------------------
-  // 5. Normalisation du résultat : format stable, quel que soit l'issue
-  //    (succès, réponse vide, échec réseau, JSON malformé...)
-  // ---------------------------------------------------------------------
-  function normaliserResultat(objet) {
-    const article = (objet && typeof objet.article === "string") ? objet.article.trim() : "";
-    const sourcesBrutes = (objet && Array.isArray(objet.sources)) ? objet.sources : [];
-    const sources = sourcesBrutes
-      .filter(function (s) { return s && typeof s.url === "string" && /^https?:\/\//i.test(s.url); })
-      .map(function (s) {
-        return { titre: (s.titre && s.titre.trim()) ? s.titre.trim() : s.url, url: s.url };
-      });
-    return { article: article, sources: sources };
-  }
-
-  // ---------------------------------------------------------------------
-  // 6. Orchestration principale
-  //    Retourne toujours { article, sources } — jamais d'exception qui
-  //    remonte à l'appelant, jamais de fragment technique dans "article".
-  // ---------------------------------------------------------------------
-  async function lancerRecherche(promptExterne) {
-    const promptBrut = (typeof promptExterne === "string") ? promptExterne : input.value;
-    const sujet = extraireSujet(promptBrut);
-
-    if (typeof promptExterne === "string") {
-      input.value = promptExterne;
-    }
-
-    if (!sujet) {
-      afficherEtatVide();
-      const resultatVide = { article: "", sources: [] };
-      emettreVersInterfaceMere(resultatVide);
-      return resultatVide;
-    }
-
-    reinitialiserAffichage();
-    loadingEl.classList.add("active");
-    button.disabled = true;
-
-    let resultat;
-    try {
-      const texteModele = await interrogerModele(sujet);
-      const objet = extraireJSON(texteModele);
-      resultat = normaliserResultat(objet);
-    } catch (erreur) {
-      // Aucune trace technique n'est jamais exposée à l'interface ni
-      // renvoyée à l'interface mère : on retombe sur un résultat vide et propre.
+  let resultat;
+  try {
+    const sources = await rechercherWikipedia(sujet);
+    if (sources.length === 0) {
       resultat = { article: "", sources: [] };
-    } finally {
-      loadingEl.classList.remove("active");
-      button.disabled = false;
+    } else {
+      const article = await redigerDepuisExtraits(sujet, sources);
+      resultat = {
+        article: article,
+        sources: sources.map(function (s) { return { titre: s.titre, url: s.url }; })
+      };
     }
-
-    afficherResultat(resultat);
-    emettreVersInterfaceMere(resultat);
-    return resultat;
+  } catch (erreur) {
+    console.error("[module-recherche]", erreur);
+    resultat = { article: "", sources: [] };
+  } finally {
+    loadingEl.classList.remove("active");
+    progressTrackEl.classList.remove("active");
+    button.disabled = false;
   }
 
-  // ---------------------------------------------------------------------
-  // 7. Passerelle avec l'interface mère (routeur existant)
-  //    - Écoute les demandes entrantes via postMessage
-  //    - Renvoie le résultat au même format que la demande d'origine,
-  //      pour rester compatible avec le routeur en place sans le modifier.
-  // ---------------------------------------------------------------------
-  function emettreVersInterfaceMere(resultat, requestId) {
-    if (window.parent === window) return; // pas intégré dans un cadre parent
-    window.parent.postMessage({
-      source: "module-recherche",
-      type: "resultat_recherche",
-      requestId: requestId || null,
-      payload: resultat // { article, sources: [{ titre, url }] }
-    }, "*");
-  }
+  afficherResultat(resultat);
+  emettreVersInterfaceMere(resultat);
+  return resultat;
+}
 
-  window.addEventListener("message", function (evenement) {
-    const donnees = evenement.data;
-    if (!donnees || donnees.target !== "module-recherche") return;
-    if (donnees.type !== "lancer_recherche") return;
+// ---------------------------------------------------------------------
+// 7. Passerelle avec l'interface mère (routeur existant)
+// ---------------------------------------------------------------------
+function emettreVersInterfaceMere(resultat, requestId) {
+  if (window.parent === window) return;
+  window.parent.postMessage({
+    source: "module-recherche",
+    type: "resultat_recherche",
+    requestId: requestId || null,
+    payload: resultat
+  }, "*");
+}
 
-    const requestId = donnees.requestId || null;
-    lancerRecherche(donnees.prompt).then(function (resultat) {
-      emettreVersInterfaceMere(resultat, requestId);
-    });
+window.addEventListener("message", function (evenement) {
+  const donnees = evenement.data;
+  if (!donnees || donnees.target !== "module-recherche") return;
+  if (donnees.type !== "lancer_recherche") return;
+  const requestId = donnees.requestId || null;
+  lancerRecherche(donnees.prompt).then(function (resultat) {
+    emettreVersInterfaceMere(resultat, requestId);
   });
+});
 
-  button.addEventListener("click", function () { lancerRecherche(); });
-  input.addEventListener("keydown", function (evenement) {
-    if (evenement.key === "Enter") {
-      evenement.preventDefault();
-      lancerRecherche();
-    }
-  });
+button.addEventListener("click", function () { lancerRecherche(); });
+input.addEventListener("keydown", function (evenement) {
+  if (evenement.key === "Enter") { evenement.preventDefault(); lancerRecherche(); }
+});
 
-  // API exposée pour l'interface mère si elle est dans le même contexte
-  // JS (iframe same-origin ou composant monté directement), en plus de
-  // la passerelle postMessage ci-dessus pour les cas cross-origin.
-  window.RechercheModule = {
-    // Retourne une Promise résolue avec { article, sources }.
-    lancer: function (prompt) {
-      return lancerRecherche(prompt);
-    }
-  };
-})();
+window.RechercheModule = {
+  lancer: function (prompt) { return lancerRecherche(prompt); }
+};
 </script>
 
 </body>
