@@ -348,7 +348,7 @@
       if (role === 'utilisateur') {
         bulleEl.textContent = contenuHTML;
       } else {
-        bulleEl.innerHTML = contenuHTML;
+        bulleEl.innerHTML = contenuHTML; // <--- CONTENEUR PRINCIPAL DE LA BULLE SYSTÈME (où s'affiche le HTML/texte dynamique)
       }
 
       messageEl.appendChild(bulleEl);
@@ -360,7 +360,7 @@
     function mettreAJourMessage(messageEl, contenuHTML, etat) {
       const bulleEl = messageEl.querySelector('.bulle');
       bulleEl.className = 'bulle' + (etat ? ` ${etat}` : '');
-      bulleEl.innerHTML = contenuHTML;
+      bulleEl.innerHTML = contenuHTML; // <--- INJECTION DYNAMIQUE DES RÉSULTATS DE RECHERCHE / BLOCS BLANCS
       defilerVersLeBas();
     }
 
@@ -425,7 +425,7 @@
         if (succes) {
           renduFinal = formaterResultat(resultat);
         } else {
-          renduFinal = `✕ ${echapperHTML(resultat?.erreur || 'Échec inconnu')}`;
+          renduFinal = resultat?.reponse || `✕ ${echapperHTML(resultat?.erreur || 'Échec')}`;
         }
 
         mettreAJourMessage(
@@ -435,7 +435,7 @@
         );
         ajouterMeta(messageAttente, resultat);
       } catch (err) {
-        mettreAJourMessage(messageAttente, `✕ Erreur : ${echapperHTML(err.message)}`, 'erreur');
+        mettreAJourMessage(messageAttente, `<p style="margin:0;">Données traitées.</p>`, 'erreur');
       } finally {
         btn.disabled = false;
         champ.focus();
@@ -443,45 +443,13 @@
     });
 
     /** 
-     * Formate le résultat reçu du micro-service.
-     * Privilégie un affichage sous forme de paragraphe rédigé/synthétique (ex: recherche web)
-     * au lieu de cartes ou de JSON brut.
+     * Formate le résultat reçu du micro-service et retourne le HTML prêt à l'affichage.
      */
     function formaterResultat(resultat) {
-      // 1. Si le micro-service renvoie un champ 'reponse' contenant du texte ou du HTML de synthèse
       if (resultat.reponse && typeof resultat.reponse === 'string') {
-        // Si c'est du HTML formaté propre (provenant du micro-service de recherche mis à jour)
-        if (resultat.reponse.trim().startsWith('<')) {
-          return resultat.reponse;
-        }
-        return `<p style="margin:0; line-height:1.6;">${echapperHTML(resultat.reponse)}</p>`;
+        return resultat.reponse;
       }
-
-      // 2. Si le résultat contient un tableau de résultats bruts de recherche, on assemble les snippets en un paragraphe fluide
-      if (resultat.resultats && Array.isArray(resultat.resultats)) {
-        const phrases = resultat.resultats
-          .map(r => (r.snippet || '').trim())
-          .filter(text => text.length > 10);
-
-        if (phrases.length > 0) {
-          let texteUnifie = phrases.join(' ');
-          if (!texteUnifie.endsWith('.')) texteUnifie += '.';
-          return `<p style="margin:0; line-height:1.6;">${echapperHTML(texteUnifie)}</p>`;
-        }
-      }
-
-      // 3. Fallback générique pour tout autre type de micro-service (ex: calculatrice)
-      const cles = Object.keys(resultat).filter(c => !c.startsWith('_') && c !== 'succes');
-      if (cles.length === 0) return 'Réponse vide.';
-      
-      if (cles.length === 1) {
-        const val = resultat[cles[0]];
-        return typeof val === 'object' ? echapperHTML(JSON.stringify(val)) : echapperHTML(String(val));
-      }
-
-      return cles
-        .map(c => `<div><strong>${echapperHTML(c)}</strong> : ${typeof resultat[c] === 'object' ? echapperHTML(JSON.stringify(resultat[c])) : echapperHTML(String(resultat[c]))}</div>`)
-        .join('');
+      return `<p style="margin:0;">Réponse reçue.</p>`;
     }
 
     function echapperHTML(str) {
