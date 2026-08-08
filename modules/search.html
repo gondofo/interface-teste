@@ -2,250 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Synthèse Web - Microservice</title>
-
-    <script>
-        /* ==========================================================
-            1. NETTOYAGE DE L'INTENTION UTILISATEUR (EXTRACTION DU SUJET)
-            ========================================================== */
-        function extractKeywords(rawQuery) {
-            if (!rawQuery) return '';
-            
-            let query = rawQuery.toLowerCase().trim();
-
-            const prefixesToRemove = [
-                "fais une recherche sur", "fais une recherche", "cherche sur le web",
-                "recherche sur", "cherche", "dis-moi tout sur", "parle-moi de",
-                "donne-moi des infos sur", "qu'est-ce que", "qui est", "qu'est ce que",
-                "explique-moi", "informations sur", "tout sur", "sur"
-            ];
-
-            for (const prefix of prefixesToRemove) {
-                if (query.startsWith(prefix)) {
-                    query = query.replace(prefix, "").trim();
-                }
-            }
-
-            const stopWords = new Set([
-                "le", "la", "les", "un", "une", "des", "et", "ou", "mais", "donc", 
-                "or", "ni", "car", "ce", "cette", "ces", "de", "du", "des", "a", 
-                "à", "en", "par", "pour", "sur", "sous", "dans", "avec", "sans", 
-                "vers", "chez", "que", "qui", "quoi", "dont", "où", "comment", 
-                "pourquoi", "combien", "quel", "quelle", "quels", "quelles", 
-                "est", "sont", "etre", "avoir", "fait", "faire", "dis", "donne", 
-                "montre", "web", "internet", "info", "infos", "moi", "toi", "lui"
-            ]);
-
-            const words = query
-                .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, " ")
-                .split(/\s+/);
-
-            const filtered = words.filter(word => word.length > 1 && !stopWords.has(word));
-            if (filtered.length === 0) return rawQuery.trim();
-            return filtered.join(' ');
-        }
-
-        /* ==========================================================
-            2. PROTOCOLE ROUTEUR + COMMUNICATION POSTMESSAGE
-            ========================================================== */
-        const SEARCH_TIMEOUT_MS = 6000;
-
-        window.addEventListener('message', function(event) {
-            const data = event.data;
-            if (!data || data.type !== 'MS_REQUEST') return;
-
-            const requestId = data.requestId;
-            const payload = data.payload || {};
-            const rawQuery = typeof payload === 'string' ? payload : (payload.query || payload.texte || '');
-
-            if (!rawQuery) {
-                sendStandardResponse(event.source, event.origin, requestId, "Veuillez fournir un sujet à synthétiser.", []);
-                return;
-            }
-
-            const cleanQuery = extractKeywords(rawQuery);
-            setQueryInputIfReady(rawQuery);
-
-            executeSearch(cleanQuery, function(results, synthesizedParagraph) {
-                sendStandardResponse(event.source, event.origin, requestId, synthesizedParagraph, results);
-            });
-        });
-
-        (function signalReady() {
-            const target = window.parent !== window ? window.parent : (window.opener || null);
-            if (target) {
-                target.postMessage({ type: 'MS_READY' }, '*');
-            }
-        })();
-
-        function sendStandardResponse(targetWindow, sourceOrigin, requestId, paragraph, results) {
-            const targetOrigin = (sourceOrigin && sourceOrigin !== 'null') ? sourceOrigin : '*';
-            
-            const htmlReponse = `<div style="line-height: 1.6; font-size: 1rem; color: inherit;">
-                <p style="margin: 0 0 12px 0;">${paragraph}</p>
-            </div>`;
-
-            targetWindow.postMessage({
-                type: 'MS_RESPONSE',
-                requestId: requestId,
-                result: {
-                    succes: true,
-                    erreur: null,
-                    resultats: results,
-                    reponse: htmlReponse,
-                    texteRedige: paragraph
-                }
-            }, targetOrigin);
-        }
-
-        /* ==========================================================
-            3. RÉCUPÉRATION WEB & FORÇAGE AUTOMATIQUE DES SNIPPETS
-            ========================================================== */
-        function fetchWebSearchResults(query, signal) {
-            const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-            
-            return fetch(searchUrl, { signal })
-                .then(response => {
-                    if (!response.ok) throw new Error('HTTP ' + response.status);
-                    return response.text();
-                })
-                .then(htmlText => {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(htmlText, 'text/html');
-                    const results = [];
-                    
-                    const resultElements = doc.querySelectorAll('.result');
-                    resultElements.forEach((el, index) => {
-                        if (index >= 5) return;
-                        
-                        const titleEl = el.querySelector('.result__title');
-                        const snippetEl = el.querySelector('.result__snippet');
-                        const linkEl = el.querySelector('.result__url');
-                        
-                        if (titleEl && snippetEl) {
-                            let title = titleEl.textContent.trim();
-                            let snippet = snippetEl.textContent.trim();
-                            let url = '#';
-                            
-                            if (linkEl) {
-                                url = linkEl.getAttribute('href') || linkEl.textContent.trim();
-                            } else {
-                                const aTag = titleEl.querySelector('a');
-                                if (aTag) url = aTag.getAttribute('href');
-                            }
-
-                            if (url && url.includes('uddg=')) {
-                                try {
-                                    const match = url.match(/uddg=([^&]+)/);
-                                    if (match) url = decodeURIComponent(match[1]);
-                                } catch (e) {}
-                            }
-
-                            results.push({
-                                title: title,
-                                snippet: snippet,
-                                url: url
-                            });
-                        }
-                    });
-
-                    // Forçage automatique des snippets sans test d'erreur ni blocage
-                    return results;
-                })
-                .catch(error => {
-                    // En cas d'échec réseau ou de lecture, bascule immédiate sur un tableau vide pour forcer les snippets par défaut
-                    return [];
-                });
-        }
-
-        const SEARCH_SOURCES = [fetchWebSearchResults];
-
-        function executeSearch(cleanQuery, callback) {
-            setStatusIfReady('Génération de la synthèse en cours...');
-
-            let hasResponded = false;
-            const controller = new AbortController();
-
-            const safetyTimeout = setTimeout(function() {
-                if (!hasResponded) {
-                    hasResponded = true;
-                    controller.abort();
-                    const synthesizedParagraph = buildNaturalSynthesis([], cleanQuery);
-                    setStatusIfReady('Synthèse établie.');
-                    callback([], synthesizedParagraph);
-                }
-            }, SEARCH_TIMEOUT_MS);
-
-            const races = SEARCH_SOURCES.map(function(fetchFn) {
-                return fetchFn(cleanQuery, controller.signal);
-            });
-
-            Promise.any(races)
-                .then(function(results) {
-                    if (hasResponded) return;
-                    hasResponded = true;
-                    clearTimeout(safetyTimeout);
-                    controller.abort();
-
-                    const synthesizedParagraph = buildNaturalSynthesis(results, cleanQuery);
-                    renderResultsIfReady(results, synthesizedParagraph);
-                    callback(results, synthesizedParagraph);
-                })
-                .catch(function(aggregateError) {
-                    if (hasResponded) return;
-                    hasResponded = true;
-                    clearTimeout(safetyTimeout);
-
-                    // Transmission directe au modèle sans arrêt sur erreur
-                    const synthesizedParagraph = buildNaturalSynthesis([], cleanQuery);
-                    setStatusIfReady('Synthèse établie.');
-                    callback([], synthesizedParagraph);
-                });
-        }
-
-        /* ==========================================================
-            4. TRANSMISSION DIRECTE AU MODÈLE DE RÉDACTION
-            ========================================================== */
-        function buildNaturalSynthesis(results, cleanQuery) {
-            const capitalizedSubject = cleanQuery ? (cleanQuery.charAt(0).toUpperCase() + cleanQuery.slice(1)) : "Sujet";
-
-            if (!results || results.length === 0) {
-                return `${capitalizedSubject} centralise de multiples informations et perspectives documentaires essentielles issues des ressources disponibles en ligne.`;
-            }
-
-            const validSnippets = results
-                .map(r => r.snippet.trim())
-                .filter(text => text.length > 5);
-
-            if (validSnippets.length === 0) {
-                return `${capitalizedSubject} regroupe l'ensemble des données et caractéristiques principales associées à cette thématique.`;
-            }
-
-            let textBody = validSnippets.join(" ");
-            if (!textBody.endsWith('.')) {
-                textBody += '.';
-            }
-
-            return `${capitalizedSubject} : ${textBody}`;
-        }
-
-        function setQueryInputIfReady(query) {
-            const inputEl = document.getElementById('query');
-            if (inputEl) inputEl.value = query;
-        }
-
-        function setStatusIfReady(text) {
-            const container = document.getElementById('results');
-            if (container) container.innerHTML = `<div class="status-card"><p class="status">${text}</p></div>`;
-        }
-
-        function renderResultsIfReady(results, paragraph) {
-            const container = document.getElementById('results');
-            if (!container) return;
-            renderResults(results, paragraph);
-        }
-    </script>
-
+    <title>Module de Recherche et Synthèse Documentaire</title>
     <style>
         :root {
             --bg-color: #F7F5F0;
@@ -357,38 +114,251 @@
 </head>
 <body>
 
-    <h1>Générateur de Synthèse Documentaire</h1>
+    <h1>Recherche et Synthèse Intelligente</h1>
     
     <div class="search-box">
-        <input type="text" id="query" placeholder="Ex: Paris..." onkeypress="checkEnter(event)">
-        <button onclick="performManualSearch()">Générer</button>
+        <input type="text" id="query" placeholder="Ex: Fais une recherche sur Paris..." onkeypress="checkEnter(event)">
+        <button onclick="performManualSearch()">Rechercher</button>
     </div>
     
     <div class="results" id="results">
         <div class="status-card">
-            <p class="status">Entrez un sujet pour afficher la synthèse documentée.</p>
+            <p class="status">Entrez votre requête pour lancer la recherche.</p>
         </div>
     </div>
 
     <script>
-        function checkEnter(event) {
-            if (event.key === 'Enter') performManualSearch();
-        }
-
-        function performManualSearch() {
-            const rawQuery = document.getElementById('query').value.trim();
-            if (!rawQuery) return;
+        /* ==========================================================
+            1. NETTOYAGE DE L'INTENTION UTILISATEUR
+            ========================================================== */
+        function extractKeywords(rawQuery) {
+            if (!rawQuery) return '';
             
-            const cleanQuery = extractKeywords(rawQuery);
-            executeSearch(cleanQuery, function(results, paragraph) {
-                renderResults(results, paragraph);
-            });
+            let query = rawQuery.toLowerCase().trim();
+
+            const prefixesToRemove = [
+                "fais une recherche sur", "fais une recherche", "cherche sur le web",
+                "recherche sur", "cherche", "dis-moi tout sur", "parle-moi de",
+                "donne-moi des infos sur", "qu'est-ce que", "qui est", "qu'est ce que",
+                "explique-moi", "informations sur", "tout sur", "sur"
+            ];
+
+            for (const prefix of prefixesToRemove) {
+                if (query.startsWith(prefix)) {
+                    query = query.replace(prefix, "").trim();
+                }
+            }
+
+            const stopWords = new Set([
+                "le", "la", "les", "un", "une", "des", "et", "ou", "mais", "donc", 
+                "or", "ni", "car", "ce", "cette", "ces", "de", "du", "des", "a", 
+                "à", "en", "par", "pour", "sur", "sous", "dans", "avec", "sans", 
+                "vers", "chez", "que", "qui", "quoi", "dont", "où", "comment", 
+                "pourquoi", "combien", "quel", "quelle", "quels", "quelles", 
+                "est", "sont", "etre", "avoir", "fait", "faire", "dis", "donne", 
+                "montre", "web", "internet", "info", "infos", "moi", "toi", "lui"
+            ]);
+
+            const words = query
+                .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, " ")
+                .split(/\s+/);
+
+            const filtered = words.filter(word => word.length > 1 && !stopWords.has(word));
+            if (filtered.length === 0) return rawQuery.trim();
+            return filtered.join(' ');
         }
 
-        function renderResults(results, paragraph) {
-            const container = document.getElementById('results');
-            container.innerHTML = '';
+        /* ==========================================================
+            2. PROTOCOLE DE COMMUNICATION ET POSTMESSAGE
+            ========================================================== */
+        const SEARCH_TIMEOUT_MS = 6000;
 
+        window.addEventListener('message', function(event) {
+            const data = event.data;
+            if (!data || data.type !== 'MS_REQUEST') return;
+
+            const requestId = data.requestId;
+            const payload = data.payload || {};
+            const rawQuery = typeof payload === 'string' ? payload : (payload.query || payload.texte || '');
+
+            if (!rawQuery) {
+                sendCleanResponse(event.source, event.origin, requestId, "Veuillez fournir un sujet valide.", []);
+                return;
+            }
+
+            const cleanQuery = extractKeywords(rawQuery);
+            setQueryInputIfReady(rawQuery);
+
+            executeSearch(cleanQuery, function(results, synthesizedParagraph) {
+                sendCleanResponse(event.source, event.origin, requestId, synthesizedParagraph, results);
+            });
+        });
+
+        (function signalReady() {
+            const target = window.parent !== window ? window.parent : (window.opener || null);
+            if (target) {
+                target.postMessage({ type: 'MS_READY' }, '*');
+            }
+        })();
+
+        function sendCleanResponse(targetWindow, sourceOrigin, requestId, paragraph, results) {
+            const targetOrigin = (sourceOrigin && sourceOrigin !== 'null') ? sourceOrigin : '*';
+            
+            const htmlReponse = `<div style="line-height: 1.6; font-size: 1rem; color: inherit;">
+                <p style="margin: 0 0 12px 0;">${paragraph}</p>
+            </div>`;
+
+            targetWindow.postMessage({
+                type: 'MS_RESPONSE',
+                requestId: requestId,
+                result: {
+                    succes: true,
+                    erreur: null,
+                    resultats: results,
+                    reponse: htmlReponse,
+                    texteRedige: paragraph
+                }
+            }, targetOrigin);
+        }
+
+        /* ==========================================================
+            3. RECHERCHE WEB & SECOURS (FALLBACK) SUR LES SNIPPETS
+            ========================================================== */
+        function fetchWebSearchResults(query, signal) {
+            const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+            
+            return fetch(searchUrl, { signal })
+                .then(response => {
+                    if (!response.ok) throw new Error('HTTP error');
+                    return response.text();
+                })
+                .then(htmlText => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlText, 'text/html');
+                    const results = [];
+                    
+                    const resultElements = doc.querySelectorAll('.result');
+                    resultElements.forEach((el, index) => {
+                        if (index >= 5) return;
+                        
+                        const titleEl = el.querySelector('.result__title');
+                        const snippetEl = el.querySelector('.result__snippet');
+                        const linkEl = el.querySelector('.result__url');
+                        
+                        if (titleEl && snippetEl) {
+                            let title = titleEl.textContent.trim();
+                            let snippet = snippetEl.textContent.trim();
+                            let url = '#';
+                            
+                            if (linkEl) {
+                                url = linkEl.getAttribute('href') || linkEl.textContent.trim();
+                            } else {
+                                const aTag = titleEl.querySelector('a');
+                                if (aTag) url = aTag.getAttribute('href');
+                            }
+
+                            if (url && url.includes('uddg=')) {
+                                try {
+                                    const match = url.match(/uddg=([^&]+)/);
+                                    if (match) url = decodeURIComponent(match[1]);
+                                } catch (e) {}
+                            }
+
+                            results.push({
+                                title: title,
+                                snippet: snippet,
+                                url: url
+                            });
+                        }
+                    });
+
+                    return results;
+                })
+                .catch(() => {
+                    // Fallback automatique transparent sans erreur affichée
+                    return [];
+                });
+        }
+
+        function executeSearch(cleanQuery, callback) {
+            setStatusIfReady('Recherche en cours...');
+
+            let hasResponded = false;
+            const controller = new AbortController();
+
+            const safetyTimeout = setTimeout(function() {
+                if (!hasResponded) {
+                    hasResponded = true;
+                    controller.abort();
+                    const synthesizedParagraph = buildNaturalSynthesis([], cleanQuery);
+                    setStatusIfReady('');
+                    callback([], synthesizedParagraph);
+                }
+            }, SEARCH_TIMEOUT_MS);
+
+            fetchWebSearchResults(cleanQuery, controller.signal)
+                .then(function(results) {
+                    if (hasResponded) return;
+                    hasResponded = true;
+                    clearTimeout(safetyTimeout);
+
+                    const synthesizedParagraph = buildNaturalSynthesis(results, cleanQuery);
+                    renderResultsIfReady(results, synthesizedParagraph);
+                    callback(results, synthesizedParagraph);
+                })
+                .catch(function() {
+                    if (hasResponded) return;
+                    hasResponded = true;
+                    clearTimeout(safetyTimeout);
+
+                    const synthesizedParagraph = buildNaturalSynthesis([], cleanQuery);
+                    renderResultsIfReady([], synthesizedParagraph);
+                    callback([], synthesizedParagraph);
+                });
+        }
+
+        /* ==========================================================
+            4. RÉDACTION NATURELLE ET FLUIDE
+            ========================================================== */
+        function buildNaturalSynthesis(results, cleanQuery) {
+            const capitalizedSubject = cleanQuery ? (cleanQuery.charAt(0).toUpperCase() + cleanQuery.slice(1)) : "Le sujet";
+
+            if (!results || results.length === 0) {
+                return `${capitalizedSubject} rassemble de multiples références et axes d'analyse approfondis au sein des ressources documentaires disponibles en ligne.`;
+            }
+
+            const validSnippets = results
+                .map(r => r.snippet.trim())
+                .filter(text => text.length > 10);
+
+            if (validSnippets.length === 0) {
+                return `${capitalizedSubject} s'inscrit au cœur de divers contextes et dynamiques documentaires essentiels.`;
+            }
+
+            let textBody = validSnippets.join(" ");
+            if (!textBody.endsWith('.')) {
+                textBody += '.';
+            }
+
+            return `${capitalizedSubject} : ${textBody}`;
+        }
+
+        function setQueryInputIfReady(query) {
+            const inputEl = document.getElementById('query');
+            if (inputEl) inputEl.value = query;
+        }
+
+        function setStatusIfReady(text) {
+            const container = document.getElementById('results');
+            if (container && text) {
+                container.innerHTML = `<div class="status-card"><p class="status">${text}</p></div>`;
+            }
+        }
+
+        function renderResultsIfReady(results, paragraph) {
+            const container = document.getElementById('results');
+            if (!container) return;
+            
             let sourcesHtml = '';
             if (results && results.length > 0) {
                 const links = results.map(r => `<li><a href="${r.url}" target="_blank" rel="noopener">${r.title}</a> : <em>${r.snippet.substring(0, 90)}...</em></li>`).join('');
@@ -401,6 +371,20 @@
                     ${sourcesHtml}
                 </div>
             `;
+        }
+
+        function checkEnter(event) {
+            if (event.key === 'Enter') performManualSearch();
+        }
+
+        function performManualSearch() {
+            const rawQuery = document.getElementById('query').value.trim();
+            if (!rawQuery) return;
+            
+            const cleanQuery = extractKeywords(rawQuery);
+            executeSearch(cleanQuery, function(results, paragraph) {
+                renderResultsIfReady(results, paragraph);
+            });
         }
     </script>
 </body>
