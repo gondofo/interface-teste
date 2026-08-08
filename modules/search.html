@@ -35,7 +35,7 @@
         /* ==========================================================
             2. PROTOCOLE ROUTEUR + COMMUNICATION POSTMESSAGE
             ========================================================== */
-        const SEARCH_TIMEOUT_MS = 3000;
+        const SEARCH_TIMEOUT_MS = 4500;
 
         window.addEventListener('message', function(event) {
             const data = event.data;
@@ -68,7 +68,6 @@
         function sendStandardResponse(targetWindow, sourceOrigin, requestId, paragraph, results) {
             const targetOrigin = (sourceOrigin && sourceOrigin !== 'null') ? sourceOrigin : '*';
             
-            // Construction d'un HTML propre pour l'affichage visuel interne ou externe
             const htmlReponse = `<div style="line-height: 1.6; font-size: 1rem; color: inherit;">
                 <p style="margin: 0 0 12px 0;">${paragraph}</p>
             </div>`;
@@ -91,54 +90,57 @@
         }
 
         /* ==========================================================
-            3. RÉCUPÉRATION DE CONTENU TEXTUEL APPROFONDI
+            3. EXTRACTION APPROFONDIE DES RÉSUMÉS DE PAGES
             ========================================================== */
-        function fetchWikipediaContent(query, signal) {
-            const url = `https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=4&format=json&origin=*`;
-            return fetch(url, { signal }).then(function(response) {
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                return response.json();
-            }).then(function(data) {
-                const searchResults = (data.query && data.query.search) || [];
-                const results = searchResults.map(function(item) {
-                    const cleanSnippet = stripHtml(item.snippet);
+        // Récupère l'introduction détaillée de chaque page via l'API REST Summary de Wikipedia
+        function fetchPageSummary(pageKey, signal) {
+            const url = `https://fr.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageKey)}`;
+            return fetch(url, { signal })
+                .then(res => {
+                    if (!res.ok) throw new Error('Erreur chargement résumé');
+                    return res.json();
+                })
+                .then(data => {
                     return {
-                        title: item.title,
-                        snippet: cleanSnippet || "Informations textuelles générales extraites.",
-                        url: `https://fr.wikipedia.org/wiki/${encodeURIComponent(item.title)}`
+                        title: data.title || pageKey,
+                        snippet: data.extract || "Informations textuelles générales extraites.",
+                        url: (data.content_urls && data.content_urls.desktop && data.content_urls.desktop.page) 
+                             ? data.content_urls.desktop.page 
+                             : `https://fr.wikipedia.org/wiki/${encodeURIComponent(pageKey)}`
                     };
+                })
+                .catch(() => null);
+        }
+
+        // Étape 1 : Recherche les titres/clés de pages correspondants
+        function fetchAndEnrichArticles(query, signal) {
+            const searchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=3&format=json&origin=*`;
+            
+            return fetch(searchUrl, { signal })
+                .then(response => {
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    const searchResults = (data.query && data.query.search) || [];
+                    if (searchResults.length === 0) throw new Error('Aucun contenu');
+                    
+                    // Étape 2 : Pour chaque résultat, va chercher le vrai résumé textuel complet en parallèle
+                    const summaryPromises = searchResults.map(item => fetchPageSummary(item.title, signal));
+                    return Promise.all(summaryPromises);
+                })
+                .then(results => {
+                    // Filtre les éventuels échecs de requêtes unitaires
+                    const validResults = results.filter(r => r !== null && r.snippet.length > 0);
+                    if (validResults.length === 0) throw new Error('Aucun résumé valide');
+                    return validResults;
                 });
-                if (results.length === 0) throw new Error('Aucun contenu');
-                return results;
-            });
         }
 
-        function fetchWikipediaOpensearchFallback(query, signal) {
-            const url = `https://fr.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=4&namespace=0&format=json&origin=*`;
-            return fetch(url, { signal }).then(function(response) {
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                return response.json();
-            }).then(function(data) {
-                const titles = data[1] || [];
-                const snippets = data[2] || [];
-                const urls = data[3] || [];
-                const results = [];
-                for (let i = 0; i < titles.length; i++) {
-                    results.push({
-                        title: titles[i],
-                        snippet: snippets[i] || "Données textuelles de référence.",
-                        url: urls[i]
-                    });
-                }
-                if (results.length === 0) throw new Error('Aucun contenu');
-                return results;
-            });
-        }
-
-        const SEARCH_SOURCES = [fetchWikipediaContent, fetchWikipediaOpensearchFallback];
+        const SEARCH_SOURCES = [fetchAndEnrichArticles];
 
         function executeSearch(cleanQuery, rawQuery, callback) {
-            setStatusIfReady('Génération du contenu en cours...');
+            setStatusIfReady('Extraction des textes et résumés en cours...');
 
             let hasResponded = false;
             const controller = new AbortController();
@@ -365,8 +367,8 @@
 
             let sourcesHtml = '';
             if (results && results.length > 0) {
-                const links = results.map(r => `<li><a href="${r.url}" target="_blank">${r.title}</a></li>`).join('');
-                sourcesHtml = `<div class="sources-list"><strong>Sources associées :</strong><ul style="margin: 8px 0 0 20px; padding:0;">${links}</ul></div>`;
+                const links = results.map(r => `<li><a href="${r.url}" target="_blank">${r.title}</a> : <em>${r.snippet.substring(0, 90)}...</em></li>`).join('');
+                sourcesHtml = `<div class="sources-list"><strong>Sources et extraits associés :</strong><ul style="margin: 8px 0 0 20px; padding:0; line-height: 1.4;">${links}</ul></div>`;
             }
 
             container.innerHTML = `
