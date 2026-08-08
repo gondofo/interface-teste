@@ -6,11 +6,12 @@
 
     <script>
         /* ==========================================================
-           1. EXTRACTION INTELLIGENTE DES MOTS-CLÉS
-           ========================================================== */
+            1. EXTRACTION INTELLIGENTE DES MOTS-CLÉS
+            ========================================================== */
         function extractKeywords(rawQuery) {
             if (!rawQuery) return '';
             
+            // Liste des mots vides (stop words) et expressions courantes à écarter
             const stopWords = new Set([
                 "le", "la", "les", "un", "une", "des", "et", "ou", "mais", "donc", 
                 "or", "ni", "car", "ce", "cette", "ces", "de", "du", "des", "a", 
@@ -18,22 +19,28 @@
                 "vers", "chez", "que", "qui", "quoi", "dont", "où", "comment", 
                 "pourquoi", "combien", "quel", "quelle", "quels", "quelles", 
                 "est", "sont", "etre", "avoir", "fait", "faire", "dis", "donne", 
-                "montre", "cherche", "recherche", "trouve", "web", "internet", "info", "infos"
+                "montre", "cherche", "recherche", "trouve", "web", "internet", "info", "infos",
+                "moi", "toi", "lui", "nous", "vous", "leur", "ma", "ta", "sa", "mon", "ton", "son"
             ]);
 
+            // Nettoyage de la ponctuation et découpage en mots
             const words = rawQuery
                 .toLowerCase()
-                .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, " ")
+                .replace(/[.,\/\/#!$%\^&\*;:{}=\-_`~()?"']/g, " ")
                 .split(/\s+/);
 
+            // Filtrage des mots de liaison, des verbes de requête et des mots trop courts (<= 2 lettres)
             const filtered = words.filter(word => word.length > 2 && !stopWords.has(word));
+            
+            // Si tout a été filtré (sécurité), on renvoie la requête brute nettoyée des espaces superflus
             if (filtered.length === 0) return rawQuery.trim();
+            
             return filtered.join(' ');
         }
 
         /* ==========================================================
-           2. PROTOCOLE ROUTEUR + COMMUNICATION POSTMESSAGE
-           ========================================================== */
+            2. PROTOCOLE ROUTEUR + COMMUNICATION POSTMESSAGE
+            ========================================================== */
         const SEARCH_TIMEOUT_MS = 2500;
 
         window.addEventListener('message', function(event) {
@@ -49,6 +56,7 @@
                 return;
             }
 
+            // Extraction automatique du sujet principal avant la recherche
             const cleanQuery = extractKeywords(rawQuery);
             setQueryInputIfReady(rawQuery);
 
@@ -56,7 +64,6 @@
                 if (error) {
                     sendResponse(event.source, event.origin, requestId, false, error, [], "");
                 } else {
-                    // On transmet à la fois le tableau structuré et le HTML propre pour que le routeur n'affiche pas de JSON brut
                     sendResponse(event.source, event.origin, requestId, true, null, results, htmlContent);
                 }
             });
@@ -78,7 +85,7 @@
                     succes: succes,
                     erreur: erreur || null,
                     resultats: resultats,
-                    reponse: htmlReponse // Injecte une version HTML lisible pour le routeur parent
+                    reponse: htmlReponse
                 }
             }, targetOrigin);
         }
@@ -335,6 +342,7 @@
             const rawQuery = document.getElementById('query').value.trim();
             if (!rawQuery) return;
             
+            // Nettoyage automatique appliqué aussi lors d'une recherche manuelle dans l'interface
             const cleanQuery = extractKeywords(rawQuery);
             executeSearch(cleanQuery, function() {});
         }
