@@ -9,8 +9,7 @@
  *      sont pertinents (matching par mots-clés).
  *   3. Orchestrer l'appel asynchrone au micro-service choisi via le protocole
  *      iframe + postMessage (fonctionne cross-origin, sans backend).
- *   4. Journaliser (logger) chaque étape du flux : requête, service contacté,
- *      temps de réponse, succès/échec — pour une traçabilité totale.
+ *   4. Journaliser (logger) chaque étape du flux et injecter proprement le HTML.
  * ==========================================================================
  */
 
@@ -46,7 +45,6 @@ class Router {
   /**
    * Analyse le prompt utilisateur et sélectionne le micro-service le plus
    * pertinent en comparant les mots-clés du registre au texte de la requête.
-   * Retourne `null` si aucun service ne correspond.
    */
   selectionnerService(prompt) {
     if (!this.registry) throw new Error("Registre non chargé. Appeler chargerRegistre() d'abord.");
@@ -77,7 +75,7 @@ class Router {
 
   /**
    * Construit la charge utile (payload) attendue par le micro-service à
-   * partir du prompt brut, incluant la gestion du service de recherche.
+   * partir du prompt brut.
    */
   construirePayload(service, prompt) {
     switch (service.id) {
@@ -102,8 +100,8 @@ class Router {
   }
 
   /**
-   * Appelle un micro-service distant via le protocole iframe + postMessage,
-   * puis nettoie et normalise la réponse pour un affichage propre sans JSON brut.
+   * Appelle un micro-service distant via iframe + postMessage,
+   * filtre le JSON brut et isole uniquement le contenu textuel/HTML propre.
    */
   appelerService(service, payload) {
     return new Promise((resolve, reject) => {
@@ -140,8 +138,9 @@ class Router {
 
         const resultatBrut = data.result || {};
         
-        // Formate proprement la réponse si un bloc HTML ou des résultats structurés sont présents
+        // Extraction exclusive de la propriété HTML propre ou construction de cartes (zéro JSON brut)
         let contenuUI = resultatBrut.reponse || "";
+        
         if (!contenuUI && resultatBrut.resultats && Array.isArray(resultatBrut.resultats)) {
           let html = "<div style='display:flex; flex-direction:column; gap:10px;'>";
           resultatBrut.resultats.forEach(r => {
@@ -154,9 +153,14 @@ class Router {
           contenuUI = html;
         }
 
+        // Fallback ultime sur les autres types de données texte si aucune structure HTML n'est trouvée
+        if (!contenuUI) {
+          contenuUI = `<p style="margin:0; color:#1A1A1A;">${resultatBrut.texte || resultatBrut.expression || JSON.stringify(resultatBrut)}</p>`;
+        }
+
         resolve({
           ...resultatBrut,
-          reponse: contenuUI || resultatBrut.texte || resultatBrut.expression || "",
+          reponse: contenuUI,
           _duree_ms: duree,
           _service: service.id
         });
@@ -183,10 +187,10 @@ class Router {
   }
 
   /**
-   * Point d'entrée principal : reçoit un prompt utilisateur brut,
-   * sélectionne le micro-service adéquat, l'appelle, et retourne le résultat.
+   * Point d'entrée principal : route la requête et injecte directement 
+   * le HTML filtré via innerHTML dans le conteneur de l'interface.
    */
-  async router(prompt) {
+  async router(prompt, containerElement = null) {
     this._log("REQUETE_RECUE", { prompt });
 
     if (!this.registry) await this.chargerRegistre();
@@ -194,31 +198,42 @@ class Router {
     const service = this.selectionnerService(prompt);
     if (!service) {
       this._log("AUCUN_SERVICE", { prompt });
-      return {
+      const errRes = {
         succes: false,
         erreur: "Aucun micro-service du registre ne correspond à cette requête.",
-        reponse: "<p>Aucun micro-service ne correspond à cette requête.</p>"
+        reponse: "<p style='color:#666666;'>Aucun micro-service ne correspond à cette requête.</p>"
       };
+      if (containerElement) {
+        containerElement.innerHTML = errRes.reponse;
+      }
+      return errRes;
     }
 
     const payload = this.construirePayload(service, prompt);
 
     try {
       const resultat = await this.appelerService(service, payload);
+      if (containerElement && resultat.reponse) {
+        containerElement.innerHTML = resultat.reponse; // Injection propre et unique en innerHTML
+      }
       return resultat;
     } catch (err) {
-      return { 
+      const errRes = { 
         succes: false, 
         erreur: err.message, 
-        reponse: `<p style='color:#d9534f;'>Erreur : ${err.message}</p>`,
+        reponse: `<p style='color:#d9534f; margin:0;'>Erreur : ${err.message}</p>`,
         _service: service.id 
       };
+      if (containerElement) {
+        containerElement.innerHTML = errRes.reponse;
+      }
+      return errRes;
     }
   }
 
   /**
    * Journalisation interne : ajoute une entrée horodatée au journal local
-   * et notifie l'UI via le callback onLog (pour affichage temps réel).
+   * et notifie l'UI via le callback onLog.
    */
   _log(evenement, details) {
     const entree = {
