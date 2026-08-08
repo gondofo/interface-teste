@@ -6,13 +6,11 @@
 
     <script>
         /* ==========================================================
-           1. EXTRACTION INTELLIGENTE DES MOTS-CLÉS DE LA REQUÊTE
-           Supprime les mots vides (stop words) pour ne garder que le sujet.
+           1. EXTRACTION INTELLIGENTE DES MOTS-CLÉS
            ========================================================== */
         function extractKeywords(rawQuery) {
             if (!rawQuery) return '';
             
-            // Liste des mots vides en français à ignorer
             const stopWords = new Set([
                 "le", "la", "les", "un", "une", "des", "et", "ou", "mais", "donc", 
                 "or", "ni", "car", "ce", "cette", "ces", "de", "du", "des", "a", 
@@ -23,25 +21,18 @@
                 "montre", "cherche", "recherche", "trouve", "web", "internet", "info", "infos"
             ]);
 
-            // Nettoyage, passage en minuscules et découpage en mots
             const words = rawQuery
                 .toLowerCase()
                 .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, " ")
                 .split(/\s+/);
 
-            // Filtrage des mots significatifs
             const filtered = words.filter(word => word.length > 2 && !stopWords.has(word));
-
-            // Si le filtre est trop agressif (ex: recherche courte), on renvoie la requête brute
-            if (filtered.length === 0) {
-                return rawQuery.trim();
-            }
-
+            if (filtered.length === 0) return rawQuery.trim();
             return filtered.join(' ');
         }
 
         /* ==========================================================
-           2. PROTOCOLE ROUTEUR + MOTEUR DE RECHERCHE
+           2. PROTOCOLE ROUTEUR + COMMUNICATION POSTMESSAGE
            ========================================================== */
         const SEARCH_TIMEOUT_MS = 2500;
 
@@ -54,20 +45,19 @@
             const rawQuery = typeof payload === 'string' ? payload : (payload.query || payload.texte || '');
 
             if (!rawQuery) {
-                sendResponse(event.source, event.origin, requestId, false, "Aucun terme fourni.", []);
+                sendResponse(event.source, event.origin, requestId, false, "Aucun terme fourni.", [], "");
                 return;
             }
 
-            // Application du filtre intelligent
             const cleanQuery = extractKeywords(rawQuery);
+            setQueryInputIfReady(rawQuery);
 
-            setQueryInputIfReady(rawQuery); // Affiche la phrase originale dans l'input
-
-            executeSearch(cleanQuery, function(results, error) {
+            executeSearch(cleanQuery, function(results, htmlContent, error) {
                 if (error) {
-                    sendResponse(event.source, event.origin, requestId, false, error, []);
+                    sendResponse(event.source, event.origin, requestId, false, error, [], "");
                 } else {
-                    sendResponse(event.source, event.origin, requestId, true, null, results);
+                    // On transmet à la fois le tableau structuré et le HTML propre pour que le routeur n'affiche pas de JSON brut
+                    sendResponse(event.source, event.origin, requestId, true, null, results, htmlContent);
                 }
             });
         });
@@ -79,7 +69,7 @@
             }
         })();
 
-        function sendResponse(targetWindow, sourceOrigin, requestId, succes, erreur, resultats) {
+        function sendResponse(targetWindow, sourceOrigin, requestId, succes, erreur, resultats, htmlReponse) {
             const targetOrigin = (sourceOrigin && sourceOrigin !== 'null') ? sourceOrigin : '*';
             targetWindow.postMessage({
                 type: 'MS_RESPONSE',
@@ -87,7 +77,8 @@
                 result: {
                     succes: succes,
                     erreur: erreur || null,
-                    resultats: resultats
+                    resultats: resultats,
+                    reponse: htmlReponse // Injecte une version HTML lisible pour le routeur parent
                 }
             }, targetOrigin);
         }
@@ -150,7 +141,7 @@
                     hasResponded = true;
                     controller.abort();
                     setStatusIfReady('La recherche prend trop de temps.');
-                    callback(null, "Délai de recherche dépassé.");
+                    callback(null, "", "Délai de recherche dépassé.");
                 }
             }, SEARCH_TIMEOUT_MS);
 
@@ -165,8 +156,9 @@
                     clearTimeout(safetyTimeout);
                     controller.abort();
 
+                    const htmlContent = buildResultsHtml(results);
                     renderResultsIfReady(results);
-                    callback(results, null);
+                    callback(results, htmlContent, null);
                 })
                 .catch(function(aggregateError) {
                     if (hasResponded) return;
@@ -174,8 +166,21 @@
                     clearTimeout(safetyTimeout);
 
                     setStatusIfReady('Aucun résultat pertinent trouvé.');
-                    callback(null, "Toutes les sources ont échoué.");
+                    callback(null, "", "Toutes les sources ont échoué.");
                 });
+        }
+
+        function buildResultsHtml(results) {
+            if (!results || results.length === 0) return "<p>Aucun résultat trouvé.</p>";
+            let html = "<div style='display:flex; flex-direction:column; gap:10px;'>";
+            results.forEach(r => {
+                html += `<div style='background:#fff; padding:12px; border-radius:8px; border:1px solid #E3E0D8;'>
+                    <h4 style='margin:0 0 5px 0;'><a href='${r.url}' target='_blank' style='color:#1A1A1A; text-decoration:none;'>${r.title}</a></h4>
+                    <p style='margin:0; color:#666; font-size:0.9rem;'>${r.snippet}</p>
+                </div>`;
+            });
+            html += "</div>";
+            return html;
         }
 
         function setQueryInputIfReady(query) {
@@ -207,20 +212,17 @@
         }
 
         body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
             background: var(--bg-color); 
             color: var(--text-primary); 
             max-width: 800px; 
             margin: 40px auto; 
             padding: 20px; 
-            -webkit-font-smoothing: antialiased;
         }
 
         h1 { 
             font-size: 1.5rem; 
-            font-weight: 600;
-            letter-spacing: -0.02em;
-            color: var(--text-primary); 
+            font-weight: 600; 
             margin-bottom: 20px; 
         }
 
@@ -237,14 +239,11 @@
             border-radius: 10px; 
             font-size: 0.95rem; 
             background: var(--card-bg); 
-            color: var(--text-primary);
             outline: none;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
 
         input[type="text"]:focus { 
             border-color: var(--accent); 
-            box-shadow: 0 0 0 3px rgba(140, 147, 128, 0.15);
         }
 
         button { 
@@ -254,9 +253,7 @@
             padding: 0 24px; 
             border-radius: 10px; 
             font-weight: 600; 
-            font-size: 0.95rem;
             cursor: pointer; 
-            transition: background 0.2s ease;
         }
 
         button:hover { 
@@ -275,24 +272,16 @@
             border-radius: 12px; 
             border: 1px solid var(--border);
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .result-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.04);
         }
 
         .result-card h3 { 
             margin: 0 0 8px 0; 
             font-size: 1.15rem; 
-            font-weight: 600;
         }
 
         .result-card a { 
             color: var(--text-primary); 
             text-decoration: none; 
-            transition: color 0.15s ease;
         }
 
         .result-card a:hover { 
@@ -317,7 +306,6 @@
 
         .status { 
             color: var(--text-secondary); 
-            font-style: normal; 
             font-size: 0.95rem;
             margin: 0;
         }
