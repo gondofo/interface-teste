@@ -6,24 +6,20 @@
  *  Responsabilités :
  *   1. Charger et parser le Registre (registry.json).
  *   2. Analyser la requête utilisateur pour déterminer quel(s) micro-service(s)
- *      sont pertinents (matching par mots-clés — remplaçable par un moteur
- *      NLP/LLM plus avancé si besoin).
+ *      sont pertinents (matching par mots-clés).
  *   3. Orchestrer l'appel asynchrone au micro-service choisi via le protocole
  *      iframe + postMessage (fonctionne cross-origin, sans backend).
  *   4. Journaliser (logger) chaque étape du flux : requête, service contacté,
  *      temps de réponse, succès/échec — pour une traçabilité totale.
- *
- *  Aucune logique métier n'est centralisée ici : router.js ne fait
- *  qu'orchestrer. Le traitement réel est délégué à chaque micro-service.
  * ==========================================================================
  */
 
 class Router {
   constructor({ registryUrl = "./registry.json", onLog = () => {} } = {}) {
     this.registryUrl = registryUrl;
-    this.registry = null;          // Contenu chargé du registre
-    this.onLog = onLog;            // Callback UI pour afficher la trace en direct
-    this.journal = [];             // Historique local complet (traçabilité)
+    this.registry = null;             // Contenu chargé du registre
+    this.onLog = onLog;             // Callback UI pour afficher la trace en direct
+    this.journal = [];              // Historique local complet (traçabilité)
   }
 
   /**
@@ -81,13 +77,11 @@ class Router {
 
   /**
    * Construit la charge utile (payload) attendue par le micro-service à
-   * partir du prompt brut. Point d'extension : ici on fait une extraction
-   * naïve ; on pourrait y brancher un parseur plus riche par service.
+   * partir du prompt brut, incluant la gestion du service de recherche.
    */
   construirePayload(service, prompt) {
     switch (service.id) {
       case "calculatrice": {
-        // On extrait la sous-chaîne qui ressemble à une expression numérique
         const match = prompt.match(/[\d+\-*/().,\s]+(?=\D*$)|[\d+\-*/().,\s]{2,}/);
         return { expression: match ? match[0].trim() : prompt };
       }
@@ -99,19 +93,17 @@ class Router {
         return { texte: prompt, longueur_max: 3 };
       case "horodateur":
         return { format: "long" };
+      case "recherche":
+      case "web-search":
+        return { query: prompt };
       default:
         return { texte: prompt };
     }
   }
 
   /**
-   * Appelle un micro-service distant via le protocole iframe + postMessage.
-   *
-   *  - Crée une iframe invisible pointant vers l'URL du service.
-   *  - Attend son chargement, puis lui envoie la charge utile.
-   *  - Écoute la réponse postMessage correspondant au requestId.
-   *  - Applique un timeout de sécurité (défini dans le registre).
-   *  - Nettoie l'iframe dans tous les cas (succès, échec, timeout).
+   * Appelle un micro-service distant via le protocole iframe + postMessage,
+   * puis nettoie et normalise la réponse pour un affichage propre sans JSON brut.
    */
   appelerService(service, payload) {
     return new Promise((resolve, reject) => {
@@ -146,7 +138,28 @@ class Router {
           succes: !!data.result?.succes,
         });
 
-        resolve({ ...data.result, _duree_ms: duree, _service: service.id });
+        const resultatBrut = data.result || {};
+        
+        // Formate proprement la réponse si un bloc HTML ou des résultats structurés sont présents
+        let contenuUI = resultatBrut.reponse || "";
+        if (!contenuUI && resultatBrut.resultats && Array.isArray(resultatBrut.resultats)) {
+          let html = "<div style='display:flex; flex-direction:column; gap:10px;'>";
+          resultatBrut.resultats.forEach(r => {
+            html += `<div style='background:#ffffff; padding:14px; border-radius:10px; border:1px solid #E3E0D8;'>
+                <h4 style='margin:0 0 6px 0; font-size:1rem;'><a href='${r.url}' target='_blank' style='color:#1A1A1A; text-decoration:none;'>${r.title}</a></h4>
+                <p style='margin:0; color:#666666; font-size:0.9rem; line-height:1.4;'>${r.snippet}</p>
+            </div>`;
+          });
+          html += "</div>";
+          contenuUI = html;
+        }
+
+        resolve({
+          ...resultatBrut,
+          reponse: contenuUI || resultatBrut.texte || resultatBrut.expression || "",
+          _duree_ms: duree,
+          _service: service.id
+        });
       };
 
       const minuteur = setTimeout(() => {
@@ -159,7 +172,7 @@ class Router {
       iframe.onload = () => {
         iframe.contentWindow.postMessage(
           { type: "MS_REQUEST", requestId, payload },
-          "*" // En production : remplacer "*" par l'origine exacte du service pour plus de sécurité
+          "*"
         );
         this._log("APPEL_ENVOYE", { service: service.id, requestId, url: service.url, payload });
       };
@@ -184,6 +197,7 @@ class Router {
       return {
         succes: false,
         erreur: "Aucun micro-service du registre ne correspond à cette requête.",
+        reponse: "<p>Aucun micro-service ne correspond à cette requête.</p>"
       };
     }
 
@@ -193,7 +207,12 @@ class Router {
       const resultat = await this.appelerService(service, payload);
       return resultat;
     } catch (err) {
-      return { succes: false, erreur: err.message, _service: service.id };
+      return { 
+        succes: false, 
+        erreur: err.message, 
+        reponse: `<p style='color:#d9534f;'>Erreur : ${err.message}</p>`,
+        _service: service.id 
+      };
     }
   }
 
