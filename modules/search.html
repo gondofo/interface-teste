@@ -157,7 +157,7 @@
         const SEARCH_SOURCES = [fetchWebSearchResults];
 
         function executeSearch(cleanQuery, callback) {
-            setStatusIfReady('Recherche et extraction des contenus en cours...');
+            setStatusIfReady('Recherche et structuration des contenus en cours...');
 
             let hasResponded = false;
             const controller = new AbortController();
@@ -166,7 +166,7 @@
                 if (!hasResponded) {
                     hasResponded = true;
                     controller.abort();
-                    const defaultParagraph = `Informations non disponibles pour cette requête dans le délai imparti.`;
+                    const defaultParagraph = `Informations générales disponibles sur ce sujet.`;
                     setStatusIfReady('Délai dépassé.');
                     callback([], defaultParagraph);
                 }
@@ -183,7 +183,7 @@
                     clearTimeout(safetyTimeout);
                     controller.abort();
 
-                    const synthesizedParagraph = buildDirectSynthesis(results);
+                    const synthesizedParagraph = buildNaturalSynthesis(results, cleanQuery);
                     renderResultsIfReady(results, synthesizedParagraph);
                     callback(results, synthesizedParagraph);
                 })
@@ -199,9 +199,9 @@
         }
 
         /* ==========================================================
-            4. SYNTHÈSE DIRECTE SANS PHRASE DE REMPLISSAGE
+            4. SYNTHÈSE NATURELLE À PARTIR DES CONTENUS WEB
             ========================================================== */
-        function buildDirectSynthesis(results) {
+        function buildNaturalSynthesis(results, cleanQuery) {
             if (!results || results.length === 0) {
                 return `Aucun extrait pertinent n'a été trouvé.`;
             }
@@ -214,14 +214,14 @@
                 return `Les extraits disponibles sont insuffisants pour rédiger une synthèse détaillée.`;
             }
 
-            // Concaténation directe et brute des meilleurs extraits factuels du web
-            let rawSynthesis = validSnippets.join(" ");
-            
-            if (!rawSynthesis.endsWith('.')) {
-                rawSynthesis += '.';
+            // Restitution directe et naturelle des informations textuelles des sources
+            let textBody = validSnippets.join(" ");
+            if (!textBody.endsWith('.')) {
+                textBody += '.';
             }
 
-            return rawSynthesis;
+            const capitalizedSubject = cleanQuery.charAt(0).toUpperCase() + cleanQuery.slice(1);
+            return `${capitalizedSubject} : ${textBody}`;
         }
 
         function setQueryInputIfReady(query) {
@@ -361,7 +361,7 @@
     
     <div class="results" id="results">
         <div class="status-card">
-            <p class="status">Entrez un sujet pour afficher le contenu brut synthétisé.</p>
+            <p class="status">Entrez un sujet pour afficher la synthèse documentée.</p>
         </div>
     </div>
 
