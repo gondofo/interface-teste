@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Recherche Web - Microservice</title>
+    <title>Synthèse Web - Microservice</title>
 
     <script>
         /* ==========================================================
@@ -11,7 +11,6 @@
         function extractKeywords(rawQuery) {
             if (!rawQuery) return '';
             
-            // Liste des mots vides (stop words) et expressions courantes à écarter
             const stopWords = new Set([
                 "le", "la", "les", "un", "une", "des", "et", "ou", "mais", "donc", 
                 "or", "ni", "car", "ce", "cette", "ces", "de", "du", "des", "a", 
@@ -23,18 +22,13 @@
                 "moi", "toi", "lui", "nous", "vous", "leur", "ma", "ta", "sa", "mon", "ton", "son"
             ]);
 
-            // Nettoyage de la ponctuation et découpage en mots
             const words = rawQuery
                 .toLowerCase()
                 .replace(/[.,\/\/#!$%\^&\*;:{}=\-_`~()?"']/g, " ")
                 .split(/\s+/);
 
-            // Filtrage des mots de liaison, des verbes de requête et des mots trop courts (<= 2 lettres)
             const filtered = words.filter(word => word.length > 2 && !stopWords.has(word));
-            
-            // Si tout a été filtré (sécurité), on renvoie la requête brute nettoyée des espaces superflus
             if (filtered.length === 0) return rawQuery.trim();
-            
             return filtered.join(' ');
         }
 
@@ -56,7 +50,6 @@
                 return;
             }
 
-            // Extraction automatique du sujet principal avant la recherche
             const cleanQuery = extractKeywords(rawQuery);
             setQueryInputIfReady(rawQuery);
 
@@ -85,7 +78,7 @@
                     succes: succes,
                     erreur: erreur || null,
                     resultats: resultats,
-                    reponse: htmlReponse
+                    reponse: htmlReponse // Transmet le paragraphe de synthèse fluide au routeur parent
                 }
             }, targetOrigin);
         }
@@ -95,7 +88,7 @@
         }
 
         function fetchWikipediaOpenSearch(query, signal) {
-            const url = `https://fr.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=5&namespace=0&format=json&origin=*`;
+            const url = `https://fr.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=4&namespace=0&format=json&origin=*`;
             return fetch(url, { signal }).then(function(response) {
                 if (!response.ok) throw new Error('HTTP ' + response.status);
                 return response.json();
@@ -107,7 +100,7 @@
                 for (let i = 0; i < titles.length; i++) {
                     results.push({
                         title: titles[i],
-                        snippet: snippets[i] || 'Aucun résumé disponible pour cet article.',
+                        snippet: snippets[i] || '',
                         url: urls[i]
                     });
                 }
@@ -117,7 +110,7 @@
         }
 
         function fetchWikipediaRest(query, signal) {
-            const url = `https://fr.wikipedia.org/w/rest.php/v1/search/page?q=${encodeURIComponent(query)}&limit=5`;
+            const url = `https://fr.wikipedia.org/w/rest.php/v1/search/page?q=${encodeURIComponent(query)}&limit=4`;
             return fetch(url, { signal }).then(function(response) {
                 if (!response.ok) throw new Error('HTTP ' + response.status);
                 return response.json();
@@ -126,7 +119,7 @@
                 const results = pages.map(function(p) {
                     return {
                         title: p.title,
-                        snippet: stripHtml(p.excerpt || p.description) || 'Aucun résumé disponible.',
+                        snippet: stripHtml(p.excerpt || p.description) || '',
                         url: 'https://fr.wikipedia.org/wiki/' + encodeURIComponent(p.key)
                     };
                 });
@@ -138,7 +131,7 @@
         const SEARCH_SOURCES = [fetchWikipediaOpenSearch, fetchWikipediaRest];
 
         function executeSearch(query, callback) {
-            setStatusIfReady('Recherche en cours...');
+            setStatusIfReady('Génération de la synthèse...');
 
             let hasResponded = false;
             const controller = new AbortController();
@@ -163,7 +156,7 @@
                     clearTimeout(safetyTimeout);
                     controller.abort();
 
-                    const htmlContent = buildResultsHtml(results);
+                    const htmlContent = buildSynthesisHtml(results);
                     renderResultsIfReady(results);
                     callback(results, htmlContent, null);
                 })
@@ -172,22 +165,37 @@
                     hasResponded = true;
                     clearTimeout(safetyTimeout);
 
-                    setStatusIfReady('Aucun résultat pertinent trouvé.');
+                    setStatusIfReady('Aucune information pertinente trouvée.');
                     callback(null, "", "Toutes les sources ont échoué.");
                 });
         }
 
-        function buildResultsHtml(results) {
-            if (!results || results.length === 0) return "<p>Aucun résultat trouvé.</p>";
-            let html = "<div style='display:flex; flex-direction:column; gap:10px;'>";
-            results.forEach(r => {
-                html += `<div style='background:#fff; padding:12px; border-radius:8px; border:1px solid #E3E0D8;'>
-                    <h4 style='margin:0 0 5px 0;'><a href='${r.url}' target='_blank' style='color:#1A1A1A; text-decoration:none;'>${r.title}</a></h4>
-                    <p style='margin:0; color:#666; font-size:0.9rem;'>${r.snippet}</p>
-                </div>`;
-            });
-            html += "</div>";
-            return html;
+        /* ==========================================================
+            3. ASSEMBLAGE DU TEXTE EN PARAGRAPHE DE SYNTHÈSE FLUIDE
+            ========================================================== */
+        function buildSynthesisHtml(results) {
+            if (!results || results.length === 0) return "<p>Aucune information disponible.</p>";
+
+            // Filtrer les snippets valides et non vides
+            const sentences = results
+                .map(r => r.snippet.trim())
+                .filter(text => text.length > 10);
+
+            if (sentences.length === 0) {
+                return "<p>Informations insuffisantes pour générer une synthèse.</p>";
+            }
+
+            // Assemblage propre sous forme d'un paragraphe fluide de type assistant
+            let paragrapheUnifie = sentences.join(" ");
+            
+            // S'assurer que le texte se termine par un point
+            if (!paragrapheUnifie.endsWith('.')) {
+                paragrapheUnifie += '.';
+            }
+
+            return `<div style="line-height: 1.6; font-size: 1rem; color: inherit;">
+                <p style="margin: 0;">${paragrapheUnifie}</p>
+            </div>`;
         }
 
         function setQueryInputIfReady(query) {
@@ -273,34 +281,15 @@
             gap: 16px; 
         }
 
-        .result-card { 
+        .synthesis-card { 
             background: var(--card-bg); 
-            padding: 22px; 
+            padding: 24px; 
             border-radius: 12px; 
             border: 1px solid var(--border);
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
-        }
-
-        .result-card h3 { 
-            margin: 0 0 8px 0; 
-            font-size: 1.15rem; 
-        }
-
-        .result-card a { 
-            color: var(--text-primary); 
-            text-decoration: none; 
-        }
-
-        .result-card a:hover { 
-            color: var(--accent-hover); 
-            text-decoration: underline; 
-        }
-
-        .result-card p { 
-            margin: 0; 
-            color: var(--text-secondary); 
-            font-size: 0.95rem; 
-            line-height: 1.5; 
+            line-height: 1.6;
+            font-size: 1rem;
+            color: var(--text-primary);
         }
 
         .status-card {
@@ -320,16 +309,16 @@
 </head>
 <body>
 
-    <h1>Recherche d'informations</h1>
+    <h1>Synthèse d'informations</h1>
     
     <div class="search-box">
-        <input type="text" id="query" placeholder="Entrez votre sujet ou posez une question..." onkeypress="checkEnter(event)">
+        <input type="text" id="query" placeholder="Posez une question ou entrez un sujet..." onkeypress="checkEnter(event)">
         <button onclick="performManualSearch()">Rechercher</button>
     </div>
     
     <div class="results" id="results">
         <div class="status-card">
-            <p class="status">Entrez un terme ci-dessus pour lancer la recherche.</p>
+            <p class="status">Entrez un sujet ci-dessus pour afficher la synthèse.</p>
         </div>
     </div>
 
@@ -342,28 +331,35 @@
             const rawQuery = document.getElementById('query').value.trim();
             if (!rawQuery) return;
             
-            // Nettoyage automatique appliqué aussi lors d'une recherche manuelle dans l'interface
             const cleanQuery = extractKeywords(rawQuery);
             executeSearch(cleanQuery, function() {});
         }
 
+        // Affichage direct d'un bloc de texte synthétique dans l'interface interne du microservice
         function renderResults(results) {
             const container = document.getElementById('results');
             container.innerHTML = '';
 
             if (!results || results.length === 0) {
-                container.innerHTML = '<div class="status-card"><p class="status">Aucun résultat trouvé.</p></div>';
+                container.innerHTML = '<div class="status-card"><p class="status">Aucune information trouvée.</p></div>';
                 return;
             }
 
-            results.forEach(r => {
-                container.innerHTML += `
-                    <div class="result-card">
-                        <h3><a href="${r.url}" target="_blank">${r.title}</a></h3>
-                        <p>${r.snippet}</p>
-                    </div>
-                `;
-            });
+            const synthesizedText = results
+                .map(r => r.snippet.trim())
+                .filter(text => text.length > 10)
+                .join(" ");
+
+            if (!synthesizedText) {
+                container.innerHTML = '<div class="status-card"><p class="status">Synthèse indisponible.</p></div>';
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="synthesis-card">
+                    <p style="margin:0;">${synthesizedText}</p>
+                </div>
+            `;
         }
     </script>
 </body>
