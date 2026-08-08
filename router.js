@@ -1,41 +1,29 @@
 /**
  * ==========================================================================
  *  ROUTER.JS — Cœur du système de routage de l'Interface Mère
- *  (Avec intégration d'un LLM local embarqué et sans blocage)
+ * ==========================================================================
+ *
+ *  Responsabilités :
+ *   1. Charger et parser le Registre (registry.json).
+ *   2. Analyser la requête utilisateur pour déterminer quel(s) micro-service(s)
+ *      sont pertinents (matching par mots-clés).
+ *   3. Orchestrer l'appel asynchrone au micro-service choisi via le protocole
+ *      iframe + postMessage (fonctionne cross-origin, sans backend).
+ *   4. Journaliser (logger) chaque étape du flux et injecter proprement le HTML.
  * ==========================================================================
  */
 
 class Router {
   constructor({ registryUrl = "./registry.json", onLog = () => {} } = {}) {
     this.registryUrl = registryUrl;
-    this.registry = null;
-    this.onLog = onLog;
-    this.journal = [];
-    this.localSummarizer = null;
-    this.isModelLoading = false;
-  }
-
-  /**
-   * Charge et initialise un petit LLM local open-source pour le résumé (100% navigateur).
-   */
-  async initialiserLLMLocal() {
-    if (this.localSummarizer || this.isModelLoading) return;
-    this.isModelLoading = true;
-    
-    try {
-      this._log("LLM_CHARGEMENT_DEBUT", { modele: "Xenova/distilbart-cnn-6-6" });
-      const { pipeline } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0');
-      this.localSummarizer = await pipeline('summarization', 'Xenova/distilbart-cnn-6-6');
-      this._log("LLM_CHARGEMENT_SUCCES", { statut: "Prêt" });
-    } catch (err) {
-      this._log("LLM_CHARGEMENT_ERREUR", { erreur: err.message });
-    } finally {
-      this.isModelLoading = false;
-    }
+    this.registry = null;             // Contenu chargé du registre
+    this.onLog = onLog;               // Callback UI pour afficher la trace en direct
+    this.journal = [];                // Historique local complet (traçabilité)
   }
 
   /**
    * Charge le registre centralisé depuis registry.json.
+   * Doit être appelé une fois avant toute résolution de requête.
    */
   async chargerRegistre() {
     const t0 = performance.now();
@@ -55,7 +43,8 @@ class Router {
   }
 
   /**
-   * Analyse le prompt utilisateur et sélectionne le micro-service pertinent.
+   * Analyse le prompt utilisateur et sélectionne le micro-service le plus
+   * pertinent en comparant les mots-clés du registre au texte de la requête.
    */
   selectionnerService(prompt) {
     if (!this.registry) throw new Error("Registre non chargé. Appeler chargerRegistre() d'abord.");
@@ -85,7 +74,8 @@ class Router {
   }
 
   /**
-   * Construit la charge utile (payload).
+   * Construit la charge utile (payload) attendue par le micro-service à
+   * partir du prompt brut.
    */
   construirePayload(service, prompt) {
     switch (service.id) {
@@ -111,7 +101,8 @@ class Router {
   }
 
   /**
-   * Appelle un micro-service distant et transmet les données au LLM local sans bloquer.
+   * Appelle un micro-service distant via iframe + postMessage,
+   * filtre le JSON brut et construit les cartes d'affichage en blocs blancs.
    */
   appelerService(service, payload) {
     return new Promise((resolve, reject) => {
@@ -131,7 +122,7 @@ class Router {
         if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
       };
 
-      const ecouteur = async (event) => {
+      const ecouteur = (event) => {
         const data = event.data;
         if (!data || data.type !== "MS_RESPONSE" || data.requestId !== requestId) return;
 
@@ -147,42 +138,26 @@ class Router {
         });
 
         const resultatBrut = data.result || {};
-        let contenuUI = "";
-
-        // 1. Extraction souple du texte ou des snippets disponibles
-        let texteBrutAssemble = "";
-        if (resultatBrut.reponse && typeof resultatBrut.reponse === 'string' && resultatBrut.reponse.trim().length > 0) {
-          texteBrutAssemble = resultatBrut.reponse;
-        } else if (resultatBrut.resultats && Array.isArray(resultatBrut.resultats)) {
-          texteBrutAssemble = resultatBrut.resultats
-            .map(r => (r.snippet || r.description || r.title || '').trim())
-            .filter(Boolean)
-            .join(" ");
+        
+        // Extraction exclusive de la propriété HTML propre ou construction de cartes (blocs blancs)
+        let contenuUI = resultatBrut.reponse || "";
+        
+        if (!contenuUI && resultatBrut.resultats && Array.isArray(resultatBrut.resultats)) {
+          let html = "<div style='display:flex; flex-direction:column; gap:10px;'>";
+          resultatBrut.resultats.forEach(r => {
+            html += `<div style='background:#ffffff; padding:14px; border-radius:10px; border:1px solid #E3E0D8;'>
+                <h4 style='margin:0 0 6px 0; font-size:1rem;'><a href='${r.url}' target='_blank' style='color:#1A1A1A; text-decoration:none;'>${r.title}</a></h4>
+                <p style='margin:0; color:#666666; font-size:0.9rem; line-height:1.4;'>${r.snippet}</p>
+            </div>`;
+          });
+          html += "</div>";
+          contenuUI = html;
         }
 
-        // Si le texte brut est vide, on prend un contenu par défaut issu de l'objet ou du payload
-        if (!texteBrutAssemble) {
-          texteBrutAssemble = resultatBrut.texte || resultatBrut.expression || JSON.stringify(resultatBrut) || "Traitement effectué avec succès.";
+        // Fallback ultime sur les autres types de données texte si aucune structure n'est trouvée
+        if (!contenuUI) {
+          contenuUI = `<p style="margin:0; color:#1A1A1A;">${resultatBrut.texte || resultatBrut.expression || JSON.stringify(resultatBrut)}</p>`;
         }
-
-        // 2. Tentative de traitement par le LLM local si disponible
-        if (this.localSummarizer && texteBrutAssemble.length > 20) {
-          try {
-            const resultatResume = await this.localSummarizer(texteBrutAssemble, {
-              max_length: 130,
-              min_length: 20,
-              do_sample: false
-            });
-            if (resultatResume && resultatResume[0]?.summary_text) {
-              texteBrutAssemble = resultatResume[0].summary_text;
-            }
-          } catch (llmErr) {
-            this._log("LLM_SYNTHESE_ERREUR", { erreur: llmErr.message });
-          }
-        }
-
-        // 3. Injection garantie sans aucune condition de blocage
-        contenuUI = `<p style="margin: 0; line-height: 1.6;">${texteBrutAssemble}</p>`;
 
         resolve({
           ...resultatBrut,
@@ -196,13 +171,8 @@ class Router {
         if (termine) return;
         nettoyer();
         this._log("APPEL_TIMEOUT", { service: service.id, requestId, timeout_ms: service.timeout_ms });
-        // Même en cas de timeout, on renvoie un message par défaut au lieu de planter
-        resolve({
-          succes: false,
-          reponse: `<p style="margin: 0; color: #666666;">Le micro-service a pris trop de temps à répondre, aucun contenu bloquant n'a été affiché.</p>`,
-          _service: service.id
-        });
-      }, service.timeout_ms || 10000);
+        reject(new Error(`Timeout : le micro-service « ${service.id} » n'a pas répondu à temps.`));
+      }, service.timeout_ms || 5000);
 
       iframe.onload = () => {
         iframe.contentWindow.postMessage(
@@ -218,21 +188,21 @@ class Router {
   }
 
   /**
-   * Point d'entrée principal : route la requête et injecte le résultat.
+   * Point d'entrée principal : route la requête et injecte directement 
+   * le HTML filtré via innerHTML dans le conteneur de l'interface.
    */
   async router(prompt, containerElement = null) {
     this._log("REQUETE_RECUE", { prompt });
 
     if (!this.registry) await this.chargerRegistre();
 
-    this.initialiserLLMLocal();
-
     const service = this.selectionnerService(prompt);
     if (!service) {
       this._log("AUCUN_SERVICE", { prompt });
       const errRes = {
         succes: false,
-        reponse: "<p style='color:#666666;'>Aucun micro-service ne correspond à cette requête, mais le système reste opérationnel.</p>"
+        erreur: "Aucun micro-service du registre ne correspond à cette requête.",
+        reponse: "<p style='color:#666666;'>Aucun micro-service ne correspond à cette requête.</p>"
       };
       if (containerElement) {
         containerElement.innerHTML = errRes.reponse;
@@ -245,13 +215,14 @@ class Router {
     try {
       const resultat = await this.appelerService(service, payload);
       if (containerElement && resultat.reponse) {
-        containerElement.innerHTML = resultat.reponse;
+        containerElement.innerHTML = resultat.reponse; // Injection propre et unique en innerHTML
       }
       return resultat;
     } catch (err) {
       const errRes = { 
         succes: false, 
-        reponse: `<p style='margin:0;'>Traitement par défaut appliqué suite à un incident mineur.</p>`,
+        erreur: err.message, 
+        reponse: `<p style='color:#d9534f; margin:0;'>Erreur : ${err.message}</p>`,
         _service: service.id 
       };
       if (containerElement) {
@@ -261,6 +232,10 @@ class Router {
     }
   }
 
+  /**
+   * Journalisation interne : ajoute une entrée horodatée au journal local
+   * et notifie l'UI via le callback onLog.
+   */
   _log(evenement, details) {
     const entree = {
       horodatage: new Date().toISOString(),
@@ -271,6 +246,7 @@ class Router {
     this.onLog(entree);
   }
 
+  /** Retourne l'historique complet des événements tracés. */
   getJournal() {
     return this.journal;
   }
