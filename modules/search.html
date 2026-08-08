@@ -122,8 +122,83 @@
         }
 
         /* ==========================================================
-           2. MOTEUR DE RECHERCHE (Wikipédia via fetch + AbortController)
+           2. MOTEUR DE RECHERCHE — course multi-API (fetch + AbortController)
            ========================================================== */
+        // Chaque source expose fetchFn(query, signal) -> Promise<Array<{title, snippet, url}>>
+        // On interroge toutes les sources en parallèle et on garde la
+        // PREMIÈRE réponse valide (Promise.any). La latence totale devient
+        // donc celle de la source la plus rapide à cet instant, pas la somme
+        // ni la latence d'une source unique qui peut être ponctuellement lente.
+
+        function stripHtml(str) {
+            return (str || '').replace(/<[^>]*>/g, '');
+        }
+
+        // Source A : Wikipédia — API "opensearch" (classique)
+        function fetchWikipediaOpenSearch(query, signal) {
+            const url = `https://fr.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=5&namespace=0&format=json&origin=*`;
+            return fetch(url, { signal }).then(function(response) {
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.json();
+            }).then(function(data) {
+                const titles = data[1] || [];
+                const snippets = data[2] || [];
+                const urls = data[3] || [];
+                const results = [];
+                for (let i = 0; i < titles.length; i++) {
+                    results.push({
+                        title: titles[i],
+                        snippet: snippets[i] || 'Pas de description disponible.',
+                        url: urls[i]
+                    });
+                }
+                if (results.length === 0) throw new Error('Aucun résultat (opensearch)');
+                return results;
+            });
+        }
+
+        // Source B : Wikipédia — API REST v1 (endpoint distinct, souvent plus léger/rapide)
+        function fetchWikipediaRest(query, signal) {
+            const url = `https://fr.wikipedia.org/w/rest.php/v1/search/page?q=${encodeURIComponent(query)}&limit=5`;
+            return fetch(url, { signal }).then(function(response) {
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.json();
+            }).then(function(data) {
+                const pages = data.pages || [];
+                const results = pages.map(function(p) {
+                    return {
+                        title: p.title,
+                        snippet: stripHtml(p.excerpt || p.description) || 'Pas de description disponible.',
+                        url: 'https://fr.wikipedia.org/wiki/' + encodeURIComponent(p.key)
+                    };
+                });
+                if (results.length === 0) throw new Error('Aucun résultat (rest v1)');
+                return results;
+            });
+        }
+
+        // Source C : Wikidata — recherche d'entités (bon complément, souvent très rapide)
+        function fetchWikidata(query, signal) {
+            const url = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(query)}&language=fr&limit=5&format=json&origin=*`;
+            return fetch(url, { signal }).then(function(response) {
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.json();
+            }).then(function(data) {
+                const results = (data.search || []).map(function(item) {
+                    return {
+                        title: item.label || item.id,
+                        snippet: item.description || 'Pas de description disponible.',
+                        url: item.concepturi || ('https://www.wikidata.org/wiki/' + item.id)
+                    };
+                });
+                if (results.length === 0) throw new Error('Aucun résultat (wikidata)');
+                return results;
+            });
+        }
+
+        // Liste des sources engagées dans la course. Ajoutez/retirez-en ici.
+        const SEARCH_SOURCES = [fetchWikipediaOpenSearch, fetchWikipediaRest, fetchWikidata];
+
         function executeSearch(query, callback) {
             const container = document.getElementById('results');
             container.innerHTML = '<p class="status">Recherche en cours...</p>';
@@ -131,9 +206,9 @@
             let hasResponded = false;
             const controller = new AbortController();
 
-            // Coupe net la requête réseau si elle dépasse le budget imparti,
-            // au lieu d'attendre indéfiniment une réponse ou une erreur réseau
-            // qui pourrait ne jamais arriver (cas JSONP précédent).
+            // Coupe net toutes les requêtes en course si le budget total est
+            // dépassé, au lieu d'attendre indéfiniment une réponse qui
+            // pourrait ne jamais arriver.
             const safetyTimeout = setTimeout(function() {
                 if (!hasResponded) {
                     hasResponded = true;
@@ -143,45 +218,28 @@
                 }
             }, SEARCH_TIMEOUT_MS);
 
-            const apiUrl = `https://fr.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=5&namespace=0&format=json&origin=*`;
+            const races = SEARCH_SOURCES.map(function(fetchFn) {
+                return fetchFn(query, controller.signal);
+            });
 
-            fetch(apiUrl, { signal: controller.signal })
-                .then(function(response) {
-                    if (!response.ok) throw new Error('HTTP ' + response.status);
-                    return response.json();
-                })
-                .then(function(data) {
+            Promise.any(races)
+                .then(function(results) {
                     if (hasResponded) return; // le timeout a déjà répondu
                     hasResponded = true;
                     clearTimeout(safetyTimeout);
-
-                    const titles = data[1] || [];
-                    const snippets = data[2] || [];
-                    const urls = data[3] || [];
-                    const results = [];
-
-                    for (let i = 0; i < titles.length; i++) {
-                        results.push({
-                            title: titles[i],
-                            snippet: snippets[i] || 'Pas de description disponible.',
-                            url: urls[i]
-                        });
-                    }
+                    controller.abort(); // on n'a plus besoin des autres sources en vol
 
                     renderResults(results);
                     callback(results, null);
                 })
-                .catch(function(err) {
+                .catch(function(aggregateError) {
                     if (hasResponded) return; // le timeout a déjà répondu
                     hasResponded = true;
                     clearTimeout(safetyTimeout);
 
-                    // Erreur réseau réelle (pas un abandon volontaire) :
-                    // on répond quand même tout de suite, sans attendre.
-                    if (err.name !== 'AbortError') {
-                        container.innerHTML = '<p class="status">Erreur lors de la recherche.</p>';
-                        callback(null, "Erreur réseau : " + err.message);
-                    }
+                    // Toutes les sources ont échoué (réseau, CORS, 0 résultat...)
+                    container.innerHTML = '<p class="status">Erreur lors de la recherche.</p>';
+                    callback(null, "Toutes les sources ont échoué.");
                 });
         }
 
