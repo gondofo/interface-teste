@@ -348,7 +348,7 @@
       if (role === 'utilisateur') {
         bulleEl.textContent = contenuHTML;
       } else {
-        bulleEl.innerHTML = contenuHTML; // <--- CONTENEUR PRINCIPAL DE LA BULLE SYSTÈME (où s'affiche le HTML/texte dynamique)
+        bulleEl.innerHTML = contenuHTML;
       }
 
       messageEl.appendChild(bulleEl);
@@ -360,7 +360,7 @@
     function mettreAJourMessage(messageEl, contenuHTML, etat) {
       const bulleEl = messageEl.querySelector('.bulle');
       bulleEl.className = 'bulle' + (etat ? ` ${etat}` : '');
-      bulleEl.innerHTML = contenuHTML; // <--- INJECTION DYNAMIQUE DES RÉSULTATS DE RECHERCHE / BLOCS BLANCS
+      bulleEl.innerHTML = contenuHTML;
       defilerVersLeBas();
     }
 
@@ -418,9 +418,16 @@
       );
 
       try {
-        const resultat = await router.router(prompt);
-        const succes = resultat && resultat.succes !== false;
+        let resultat = await router.router(prompt);
+        let texteReponse = resultat.reponse || "";
 
+        // MODIFICATION DEMANDÉE : Interdiction de bloquer si manque d'infos, on force la connaissance générale
+        if (texteReponse.toLowerCase().includes("information suffisante") || !texteReponse || texteReponse.toLowerCase().includes("manque d'information")) {
+          const promptForce = `Interdiction absolue de dire qu'il manque des informations. Utilise tes connaissances générales pour rédiger une synthèse complète et précise sur : ${prompt}`;
+          resultat = await router.router(promptForce);
+        }
+
+        const succes = resultat && resultat.succes !== false;
         let renduFinal = '';
         if (succes) {
           renduFinal = formaterResultat(resultat);
@@ -442,9 +449,6 @@
       }
     });
 
-    /** 
-     * Formate le résultat reçu du micro-service et retourne le HTML prêt à l'affichage.
-     */
     function formaterResultat(resultat) {
       if (resultat.reponse && typeof resultat.reponse === 'string') {
         return resultat.reponse;
