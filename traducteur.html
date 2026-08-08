@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8" /><title>Micro-service — Traducteur</title></head>
+<body>
+<script>
+  /**
+   * Micro-service "traducteur" : traduction mot-à-mot FR<->EN via un
+   * dictionnaire local, à des fins de démonstration hors-ligne.
+   * (En production : appeler ici une API de traduction externe.)
+   */
+  const DICO_FR_EN = {
+    "bonjour": "hello", "salut": "hi", "merci": "thank you", "oui": "yes",
+    "non": "no", "monde": "world", "bonsoir": "good evening", "au revoir": "goodbye",
+    "comment": "how", "allez": "are", "vous": "you", "ça": "it", "va": "goes",
+  };
+  const DICO_EN_FR = Object.fromEntries(Object.entries(DICO_FR_EN).map(([k, v]) => [v, k]));
+
+  function traiter(payload) {
+    const texte = (payload && payload.texte || "").trim();
+    const cible = (payload && payload.cible) || "en";
+
+    if (!texte) return { succes: false, erreur: "Paramètre 'texte' manquant." };
+
+    const dico = cible === "en" ? DICO_FR_EN : DICO_EN_FR;
+    const motsTraduits = texte
+      .split(/\s+/)
+      .map(mot => {
+        const nu = mot.toLowerCase().replace(/[.,!?]/g, "");
+        return dico[nu] || mot;
+      });
+
+    return {
+      succes: true,
+      texte_traduit: motsTraduits.join(" "),
+      langue_cible: cible,
+      note: motsTraduits.some((m, i) => m === texte.split(/\s+/)[i]) ? "Certains mots n'étaient pas dans le dictionnaire de démonstration." : undefined,
+    };
+  }
+
+  // ---- Infrastructure commune (identique au modèle) ----
+  window.addEventListener("message", (event) => {
+    const data = event.data;
+    if (!data || data.type !== "MS_REQUEST") return;
+    let result;
+    try { result = traiter(data.payload); }
+    catch (err) { result = { succes: false, erreur: err.message }; }
+    event.source.postMessage(
+      { type: "MS_RESPONSE", requestId: data.requestId, result },
+      event.origin === "null" ? "*" : event.origin
+    );
+  });
+</script>
+</body>
+</html>

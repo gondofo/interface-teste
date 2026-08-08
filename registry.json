@@ -1,0 +1,77 @@
+{
+  "_meta": {
+    "nom": "Registre des Micro-services",
+    "version": "1.0.0",
+    "description": "Annuaire centralisé de tous les micro-services (« neurones ») accessibles par l'Interface Mère. Chaque entrée décrit un service statique autonome : sa compétence, son URL, ses paramètres attendus et le format de sa réponse.",
+    "protocole": "iframe-postMessage",
+    "note_protocole": "Chaque micro-service est chargé dans une iframe invisible. La charge utile est transmise via window.postMessage({type:'MS_REQUEST', requestId, payload}). Le micro-service répond via window.postMessage({type:'MS_RESPONSE', requestId, result}). Ce mécanisme fonctionne cross-origin sans configuration serveur (CORS), contrairement à fetch()."
+  },
+
+  "services": [
+    {
+      "id": "resume-texte",
+      "nom": "Résumeur de texte",
+      "fonction": "Condense un texte long en un résumé court basé sur l'extraction des phrases les plus significatives.",
+      "url": "./services/resume-texte.html",
+      "mots_cles": ["résume", "résumé", "résumer", "synthèse", "condense", "summary"],
+      "parametres_attendus": {
+        "texte": "string (obligatoire) — le texte source à résumer",
+        "longueur_max": "number (optionnel, défaut: 3) — nombre de phrases dans le résumé"
+      },
+      "format_reponse": {
+        "succes": true,
+        "resume": "string",
+        "phrases_analysees": "number"
+      },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "calculatrice",
+      "nom": "Calculatrice arithmétique",
+      "fonction": "Évalue une expression mathématique simple envoyée en texte (addition, soustraction, multiplication, division).",
+      "url": "./services/calculatrice.html",
+      "mots_cles": ["calcule", "calcul", "combien fait", "additionne", "multiplie", "+", "-", "*", "/"],
+      "parametres_attendus": {
+        "expression": "string (obligatoire) — expression mathématique, ex: '12 * (4 + 2)'"
+      },
+      "format_reponse": {
+        "succes": true,
+        "resultat": "number"
+      },
+      "timeout_ms": 3000
+    },
+    {
+      "id": "traducteur",
+      "nom": "Traducteur FR/EN",
+      "fonction": "Traduit un texte court entre le français et l'anglais via un dictionnaire local (démonstration hors-ligne).",
+      "url": "./services/traducteur.html",
+      "mots_cles": ["traduis", "traduction", "translate", "en anglais", "en français"],
+      "parametres_attendus": {
+        "texte": "string (obligatoire) — texte à traduire",
+        "cible": "string (optionnel, 'en'|'fr', défaut: 'en')"
+      },
+      "format_reponse": {
+        "succes": true,
+        "texte_traduit": "string",
+        "langue_cible": "string"
+      },
+      "timeout_ms": 3000
+    },
+    {
+      "id": "horodateur",
+      "nom": "Horodateur / Formateur de date",
+      "fonction": "Retourne la date et l'heure actuelles formatées, ou effectue un calcul de différence entre deux dates.",
+      "url": "./services/horodateur.html",
+      "mots_cles": ["heure", "date", "quelle heure", "aujourd'hui", "maintenant"],
+      "parametres_attendus": {
+        "format": "string (optionnel, 'court'|'long', défaut: 'long')"
+      },
+      "format_reponse": {
+        "succes": true,
+        "date_formatee": "string",
+        "timestamp": "number"
+      },
+      "timeout_ms": 2000
+    }
+  ]
+}

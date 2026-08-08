@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8" /><title>Micro-service — Résumeur</title></head>
+<body>
+<script>
+  /**
+   * Micro-service "resume-texte" : extrait les N phrases les plus
+   * significatives d'un texte (score basé sur la fréquence des mots,
+   * méthode simple d'extraction, sans dépendance externe).
+   */
+  function traiter(payload) {
+    const texte = (payload && payload.texte || "").trim();
+    const longueurMax = (payload && payload.longueur_max) || 3;
+
+    if (!texte) return { succes: false, erreur: "Paramètre 'texte' manquant." };
+
+    const phrases = texte.match(/[^.!?]+[.!?]+/g) || [texte];
+    if (phrases.length <= longueurMax) {
+      return { succes: true, resume: texte.trim(), phrases_analysees: phrases.length };
+    }
+
+    // Fréquence des mots (hors mots vides courants)
+    const motsVides = new Set(["le","la","les","de","des","du","un","une","et","à","en","que","qui","est","dans","pour","sur","au","aux","ce","se","ne","pas"]);
+    const frequences = {};
+    texte.toLowerCase().match(/[a-zàâäéèêëïîôöùûüç]+/g)?.forEach(mot => {
+      if (motsVides.has(mot) || mot.length < 3) return;
+      frequences[mot] = (frequences[mot] || 0) + 1;
+    });
+
+    const scores = phrases.map((phrase, index) => {
+      const mots = phrase.toLowerCase().match(/[a-zàâäéèêëïîôöùûüç]+/g) || [];
+      const score = mots.reduce((s, m) => s + (frequences[m] || 0), 0) / (mots.length || 1);
+      return { phrase: phrase.trim(), score, index };
+    });
+
+    const meilleures = scores
+      .sort((a, b) => b.score - a.score)
+      .slice(0, longueurMax)
+      .sort((a, b) => a.index - b.index) // remet dans l'ordre du texte original
+      .map(s => s.phrase);
+
+    return { succes: true, resume: meilleures.join(" "), phrases_analysees: phrases.length };
+  }
+
+  // ---- Infrastructure commune (identique au modèle) ----
+  window.addEventListener("message", (event) => {
+    const data = event.data;
+    if (!data || data.type !== "MS_REQUEST") return;
+    let result;
+    try { result = traiter(data.payload); }
+    catch (err) { result = { succes: false, erreur: err.message }; }
+    event.source.postMessage(
+      { type: "MS_RESPONSE", requestId: data.requestId, result },
+      event.origin === "null" ? "*" : event.origin
+    );
+  });
+</script>
+</body>
+</html>
