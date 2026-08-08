@@ -2,477 +2,157 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Module de recherche</title>
-<style>
-  :root {
-    --ink: #1c1b1a;
-    --ink-soft: #55524d;
-    --paper: #fbfaf8;
-    --line: #e6e2db;
-    --accent: #2f5d50;
-  }
-
-  * { box-sizing: border-box; }
-
-  html, body {
-    margin: 0;
-    padding: 0;
-    background: transparent;
-    font-family: "Iowan Old Style", "Palatino Linotype", "Georgia", serif;
-    color: var(--ink);
-  }
-
-  #recherche-module {
-    max-width: 640px;
-    margin: 0 auto;
-    padding: 0;
-  }
-
-  .rm-bar {
-    display: flex;
-    gap: 8px;
-    align-items: stretch;
-  }
-
-  .rm-input {
-    flex: 1;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 15px;
-    padding: 12px 14px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: var(--paper);
-    color: var(--ink);
-    outline: none;
-    transition: border-color .15s ease;
-  }
-  .rm-input:focus { border-color: var(--accent); }
-
-  .rm-button {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: .01em;
-    padding: 0 20px;
-    border: none;
-    border-radius: 10px;
-    background: var(--accent);
-    color: #fbfaf8;
-    cursor: pointer;
-    transition: opacity .15s ease, transform .1s ease;
-  }
-  .rm-button:hover { opacity: .92; }
-  .rm-button:active { transform: scale(0.98); }
-  .rm-button:disabled { opacity: .55; cursor: default; }
-
-  .rm-output { margin-top: 22px; }
-
-  .rm-loading {
-    display: none;
-    align-items: center;
-    gap: 10px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 13px;
-    color: var(--ink-soft);
-    padding: 4px 2px;
-  }
-  .rm-loading.active { display: flex; }
-
-  .rm-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--accent);
-    animation: rm-pulse 1.1s ease-in-out infinite;
-  }
-  .rm-dot:nth-child(2) { animation-delay: .15s; }
-  .rm-dot:nth-child(3) { animation-delay: .3s; }
-  @keyframes rm-pulse {
-    0%, 80%, 100% { opacity: .25; transform: scale(0.85); }
-    40% { opacity: 1; transform: scale(1); }
-  }
-
-  .rm-progress-track {
-    display: none;
-    height: 4px;
-    border-radius: 2px;
-    background: var(--line);
-    overflow: hidden;
-    margin: 10px 0 0 0;
-  }
-  .rm-progress-track.active { display: block; }
-  .rm-progress-fill {
-    height: 100%;
-    width: 0%;
-    background: var(--accent);
-    transition: width .2s ease;
-  }
-
-  .rm-article {
-    display: none;
-    font-size: 17px;
-    line-height: 1.68;
-    color: var(--ink);
-    white-space: pre-wrap;
-  }
-  .rm-article.active { display: block; }
-
-  .rm-sources {
-    display: none;
-    margin-top: 18px;
-    padding-top: 14px;
-    border-top: 1px solid var(--line);
-  }
-  .rm-sources.active { display: block; }
-
-  .rm-sources-label {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: .08em;
-    color: var(--ink-soft);
-    margin-bottom: 8px;
-  }
-
-  .rm-source-list { display: flex; flex-direction: column; gap: 5px; }
-
-  .rm-source-link {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 13px;
-    color: var(--accent);
-    text-decoration: none;
-    opacity: .85;
-    word-break: break-word;
-  }
-  .rm-source-link:hover { opacity: 1; text-decoration: underline; }
-
-  .rm-empty {
-    display: none;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 14px;
-    color: var(--ink-soft);
-    padding: 4px 2px;
-  }
-  .rm-empty.active { display: block; }
-</style>
+<title>Micro-service — Recherche web</title>
 </head>
 <body>
+<!--
+  Micro-service "web-search" — chargé en iframe invisible par l'Interface Mère.
+  Protocole (voir registry.json) :
+    Reçoit : window.postMessage({ type: 'MS_REQUEST', requestId, payload: { query } })
+    Répond : window.postMessage({ type: 'MS_RESPONSE', requestId, result })
+  où result = { succes, resultats: [{ title, url }], texteRedige }
+-->
+<script>
+(function () {
+  "use strict";
 
-<div id="recherche-module">
-  <div class="rm-bar">
-    <input type="text" class="rm-input" id="rm-input" placeholder="Fais une recherche sur…" autocomplete="off" />
-    <button class="rm-button" id="rm-button">Rechercher</button>
-  </div>
-
-  <div class="rm-output">
-    <div class="rm-loading" id="rm-loading">
-      <span class="rm-dot"></span><span class="rm-dot"></span><span class="rm-dot"></span>
-      <span id="rm-loading-label">Recherche en cours…</span>
-    </div>
-    <div class="rm-progress-track" id="rm-progress-track">
-      <div class="rm-progress-fill" id="rm-progress-fill"></div>
-    </div>
-
-    <div class="rm-empty" id="rm-empty">Aucun résultat à afficher pour l'instant.</div>
-    <div class="rm-article" id="rm-article"></div>
-
-    <div class="rm-sources" id="rm-sources">
-      <div class="rm-sources-label">Sources</div>
-      <div class="rm-source-list" id="rm-source-list"></div>
-    </div>
-  </div>
-</div>
-
-<script type="module">
-import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0";
-
-// Le modèle est mis en cache par le navigateur après le premier chargement
-// (IndexedDB) : les visites suivantes seront quasi instantanées.
-env.allowLocalModels = false;
-
-const MODEL_ID = "onnx-community/Qwen2.5-0.5B-Instruct";
-
-const input          = document.getElementById("rm-input");
-const button          = document.getElementById("rm-button");
-const loadingEl        = document.getElementById("rm-loading");
-const loadingLabelEl   = document.getElementById("rm-loading-label");
-const progressTrackEl  = document.getElementById("rm-progress-track");
-const progressFillEl   = document.getElementById("rm-progress-fill");
-const emptyEl          = document.getElementById("rm-empty");
-const articleEl        = document.getElementById("rm-article");
-const sourcesEl        = document.getElementById("rm-sources");
-const sourceListEl     = document.getElementById("rm-source-list");
-
-let generateur = null;
-let chargementEnCours = null;
-
-// ---------------------------------------------------------------------
-// 1. Nettoyage du prompt : on ne garde que le sujet clé
-// ---------------------------------------------------------------------
-function extraireSujet(brut) {
-  let texte = (brut || "").trim();
-  if (!texte) return "";
-
-  const declencheurs = [
-    /^fais\s+une\s+recherche\s+sur\s+/i,
-    /^fait\s+une\s+recherche\s+sur\s+/i,
-    /^lance\s+une\s+recherche\s+sur\s+/i,
-    /^effectue\s+une\s+recherche\s+sur\s+/i,
-    /^recherche\s+sur\s+/i,
-    /^recherche\s+/i,
-    /^cherche\s+des\s+informations?\s+sur\s+/i,
-    /^cherche\s+sur\s+/i,
-    /^cherche\s+/i,
-    /^peux[- ]tu\s+chercher\s+(des\s+informations?\s+)?sur\s+/i,
-    /^peux[- ]tu\s+faire\s+une\s+recherche\s+sur\s+/i,
-    /^dis[- ]moi\s+en\s+plus\s+sur\s+/i,
-    /^parle[- ]moi\s+de\s+/i,
-    /^explique[- ]moi\s+/i,
-    /^donne[- ]moi\s+des\s+informations?\s+sur\s+/i,
-    /^j[’']aimerais\s+en\s+savoir\s+plus\s+sur\s+/i,
-    /^informations?\s+sur\s+/i,
-    /^qu['’]est[- ]ce\s+que\s+/i,
-    /^qui\s+est\s+/i,
-    /^qu['’]en\s+est[- ]il\s+de\s+/i
-  ];
-
-  for (const motif of declencheurs) {
-    if (motif.test(texte)) { texte = texte.replace(motif, ""); break; }
+  // ---------------------------------------------------------------------
+  // 1. Nettoyage défensif du sujet (au cas où le routeur transmet le
+  //    prompt brut plutôt qu'un mot-clé déjà isolé)
+  // ---------------------------------------------------------------------
+  function extraireSujet(brut) {
+    let texte = (brut || "").trim();
+    if (!texte) return "";
+    const declencheurs = [
+      /^fais\s+une\s+recherche\s+sur\s+/i,
+      /^fait\s+une\s+recherche\s+sur\s+/i,
+      /^lance\s+une\s+recherche\s+sur\s+/i,
+      /^effectue\s+une\s+recherche\s+sur\s+/i,
+      /^recherche\s+sur\s+/i,
+      /^recherche\s+/i,
+      /^cherche\s+des\s+informations?\s+sur\s+/i,
+      /^cherche\s+sur\s+/i,
+      /^cherche\s+/i,
+      /^trouve\s+(des\s+informations?\s+)?sur\s+/i,
+      /^peux[- ]tu\s+chercher\s+(des\s+informations?\s+)?sur\s+/i,
+      /^peux[- ]tu\s+faire\s+une\s+recherche\s+sur\s+/i,
+      /^dis[- ]moi\s+en\s+plus\s+sur\s+/i,
+      /^parle[- ]moi\s+de\s+/i,
+      /^explique[- ]moi\s+/i,
+      /^donne[- ]moi\s+des\s+informations?\s+sur\s+/i,
+      /^montre[- ]moi\s+/i,
+      /^j[’']aimerais\s+en\s+savoir\s+plus\s+sur\s+/i,
+      /^informations?\s+sur\s+/i,
+      /^qu['’]est[- ]ce\s+que\s+/i,
+      /^qui\s+est\s+/i,
+      /^où\s+est\s+/i,
+      /^qu['’]en\s+est[- ]il\s+de\s+/i
+    ];
+    for (const motif of declencheurs) {
+      if (motif.test(texte)) { texte = texte.replace(motif, ""); break; }
+    }
+    texte = texte.replace(/[?.!]+$/g, "").trim();
+    return texte || (brut || "").trim();
   }
-  texte = texte.replace(/[?.!]+$/g, "").trim();
-  return texte || (brut || "").trim();
-}
 
-// ---------------------------------------------------------------------
-// 2. Recherche : API Wikipédia (gratuite, sans clé, CORS ouvert)
-//    -> pas de "page qui refuse la lecture" : on ne lit jamais de page
-//       arbitraire, on ne consomme que l'extrait structuré fourni par
-//       l'API elle-même. Le repli sur l'extrait est donc natif.
-// ---------------------------------------------------------------------
-async function rechercherWikipedia(sujet) {
-  const rechercheUrl =
-    "https://fr.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=3&srsearch=" +
-    encodeURIComponent(sujet);
+  // ---------------------------------------------------------------------
+  // 2. Récupération : API Wikipédia (gratuite, CORS ouvert, sans clé)
+  // ---------------------------------------------------------------------
+  async function rechercherWikipedia(sujet) {
+    const rechercheUrl =
+      "https://fr.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=3&srsearch=" +
+      encodeURIComponent(sujet);
 
-  const rechercheReponse = await fetch(rechercheUrl);
-  if (!rechercheReponse.ok) return [];
-  const rechercheData = await rechercheReponse.json();
-  const resultats = (rechercheData?.query?.search) || [];
-  if (resultats.length === 0) return [];
+    const rechercheReponse = await fetch(rechercheUrl);
+    if (!rechercheReponse.ok) return [];
+    const rechercheData = await rechercheReponse.json();
+    const resultats = (rechercheData && rechercheData.query && rechercheData.query.search) || [];
+    if (resultats.length === 0) return [];
 
-  const titres = resultats.slice(0, 2).map(function (r) { return r.title; });
+    const titres = resultats.slice(0, 3).map(function (r) { return r.title; });
 
-  const extraitUrl =
-    "https://fr.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&format=json&origin=*&titles=" +
-    encodeURIComponent(titres.join("|"));
+    const extraitUrl =
+      "https://fr.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&format=json&origin=*&titles=" +
+      encodeURIComponent(titres.join("|"));
 
-  const extraitReponse = await fetch(extraitUrl);
-  if (!extraitReponse.ok) return [];
-  const extraitData = await extraitReponse.json();
-  const pages = extraitData?.query?.pages || {};
+    const extraitReponse = await fetch(extraitUrl);
+    if (!extraitReponse.ok) return [];
+    const extraitData = await extraitReponse.json();
+    const pages = (extraitData && extraitData.query && extraitData.query.pages) || {};
 
-  return Object.values(pages)
-    .filter(function (p) { return p && p.extract && p.extract.trim().length > 40; })
-    .map(function (p) {
-      return {
-        titre: p.title,
-        extrait: p.extract.trim().slice(0, 1200),
-        url: "https://fr.wikipedia.org/wiki/" + encodeURIComponent(p.title.replace(/ /g, "_"))
-      };
-    });
-}
+    return Object.values(pages)
+      .filter(function (p) { return p && p.extract && p.extract.trim().length > 30; })
+      .map(function (p) {
+        return {
+          title: p.title,
+          url: "https://fr.wikipedia.org/wiki/" + encodeURIComponent(p.title.replace(/ /g, "_")),
+          texte: nettoyerTexte(p.extract)
+        };
+      });
+  }
 
-// ---------------------------------------------------------------------
-// 3. Chargement paresseux du petit modèle local (une seule fois)
-// ---------------------------------------------------------------------
-async function obtenirGenerateur() {
-  if (generateur) return generateur;
-  if (chargementEnCours) return chargementEnCours;
+  function nettoyerTexte(brut) {
+    return (brut || "")
+      .replace(/\s+/g, " ")
+      .replace(/\(\s*écouter\s*\)/gi, "")
+      .trim()
+      .slice(0, 900);
+  }
 
-  chargementEnCours = pipeline("text-generation", MODEL_ID, {
-    dtype: "q4",
-    progress_callback: function (info) {
-      if (info.status === "progress" && typeof info.progress === "number") {
-        progressTrackEl.classList.add("active");
-        progressFillEl.style.width = Math.round(info.progress) + "%";
-        loadingLabelEl.textContent = "Chargement du modèle local (" + Math.round(info.progress) + "%)…";
+  // ---------------------------------------------------------------------
+  // 3. Mise en forme aérée du texte (paragraphes propres, sans rédaction
+  //    par LLM ici : simple assemblage lisible des extraits récupérés)
+  // ---------------------------------------------------------------------
+  function formaterTexte(extraits) {
+    return extraits.map(function (e) { return e.texte; }).join("\n\n");
+  }
+
+  // ---------------------------------------------------------------------
+  // 4. Traitement d'une requête — retourne toujours un objet valide,
+  //    jamais d'exception, jamais de champ technique brut.
+  // ---------------------------------------------------------------------
+  async function traiterRequete(query) {
+    const sujet = extraireSujet(query);
+
+    if (!sujet) {
+      return { succes: false };
+    }
+
+    try {
+      const extraits = await rechercherWikipedia(sujet);
+      if (extraits.length === 0) {
+        return { succes: false };
       }
-    }
-  });
-
-  generateur = await chargementEnCours;
-  progressTrackEl.classList.remove("active");
-  return generateur;
-}
-
-// ---------------------------------------------------------------------
-// 4. Rédaction : le petit modèle reformule les extraits en texte fluide
-// ---------------------------------------------------------------------
-async function redigerDepuisExtraits(sujet, sources) {
-  const gen = await obtenirGenerateur();
-
-  const contexte = sources
-    .map(function (s, i) { return "Extrait " + (i + 1) + " (" + s.titre + ") : " + s.extrait; })
-    .join("\n\n");
-
-  const messages = [
-    {
-      role: "system",
-      content: "Tu rédiges en français un paragraphe informatif, fluide et naturel à partir d'extraits fournis. " +
-        "Interdiction d'utiliser des formulations robotiques comme \"l'examen des données collectées\" ou " +
-        "\"les résultats indiquent que\". N'invente jamais un message d'erreur, un JSON ou une balise technique : " +
-        "produis uniquement le texte rédigé, en 1 à 3 paragraphes, rien d'autre."
-    },
-    {
-      role: "user",
-      content: "Sujet : " + sujet + "\n\nExtraits sources :\n" + contexte +
-        "\n\nRédige le texte de synthèse maintenant."
-    }
-  ];
-
-  loadingLabelEl.textContent = "Rédaction en cours…";
-
-  const sortie = await gen(messages, {
-    max_new_tokens: 320,
-    temperature: 0.6,
-    do_sample: true,
-    top_p: 0.9,
-    return_full_text: false
-  });
-
-  const brut = sortie?.[0]?.generated_text;
-  let texte = "";
-  if (typeof brut === "string") {
-    texte = brut;
-  } else if (Array.isArray(brut)) {
-    const dernier = brut[brut.length - 1];
-    texte = (dernier && typeof dernier.content === "string") ? dernier.content : "";
-  }
-  return texte.trim();
-}
-
-// ---------------------------------------------------------------------
-// 5. Rendu : uniquement le texte fluide + liens de sources discrets
-// ---------------------------------------------------------------------
-function afficherResultat(resultat) {
-  const article = (resultat.article || "").trim();
-  const sources = Array.isArray(resultat.sources) ? resultat.sources : [];
-
-  if (!article) { afficherEtatVide(); return; }
-
-  articleEl.textContent = article;
-  articleEl.classList.add("active");
-
-  sourceListEl.innerHTML = "";
-  if (sources.length > 0) {
-    sources.forEach(function (s) {
-      const lien = document.createElement("a");
-      lien.className = "rm-source-link";
-      lien.href = s.url;
-      lien.target = "_blank";
-      lien.rel = "noopener noreferrer";
-      lien.textContent = s.titre || s.url;
-      sourceListEl.appendChild(lien);
-    });
-    sourcesEl.classList.add("active");
-  } else {
-    sourcesEl.classList.remove("active");
-  }
-  emptyEl.classList.remove("active");
-}
-
-function afficherEtatVide() {
-  articleEl.classList.remove("active");
-  sourcesEl.classList.remove("active");
-  emptyEl.classList.add("active");
-}
-
-function reinitialiserAffichage() {
-  articleEl.classList.remove("active");
-  articleEl.textContent = "";
-  sourcesEl.classList.remove("active");
-  sourceListEl.innerHTML = "";
-  emptyEl.classList.remove("active");
-}
-
-// ---------------------------------------------------------------------
-// 6. Orchestration principale — toujours { article, sources }, jamais
-//    d'exception qui remonte, jamais de fragment technique affiché.
-// ---------------------------------------------------------------------
-async function lancerRecherche(promptExterne) {
-  const promptBrut = (typeof promptExterne === "string") ? promptExterne : input.value;
-  if (typeof promptExterne === "string") input.value = promptExterne;
-
-  const sujet = extraireSujet(promptBrut);
-  if (!sujet) {
-    afficherEtatVide();
-    const vide = { article: "", sources: [] };
-    emettreVersInterfaceMere(vide);
-    return vide;
-  }
-
-  reinitialiserAffichage();
-  loadingLabelEl.textContent = "Recherche en cours…";
-  loadingEl.classList.add("active");
-  button.disabled = true;
-
-  let resultat;
-  try {
-    const sources = await rechercherWikipedia(sujet);
-    if (sources.length === 0) {
-      resultat = { article: "", sources: [] };
-    } else {
-      const article = await redigerDepuisExtraits(sujet, sources);
-      resultat = {
-        article: article,
-        sources: sources.map(function (s) { return { titre: s.titre, url: s.url }; })
+      return {
+        succes: true,
+        resultats: extraits.map(function (e) { return { title: e.title, url: e.url }; }),
+        texteRedige: formaterTexte(extraits)
       };
+    } catch (erreur) {
+      console.error("[search.html]", erreur);
+      return { succes: false };
     }
-  } catch (erreur) {
-    console.error("[module-recherche]", erreur);
-    resultat = { article: "", sources: [] };
-  } finally {
-    loadingEl.classList.remove("active");
-    progressTrackEl.classList.remove("active");
-    button.disabled = false;
   }
 
-  afficherResultat(resultat);
-  emettreVersInterfaceMere(resultat);
-  return resultat;
-}
+  // ---------------------------------------------------------------------
+  // 5. Protocole MS_REQUEST / MS_RESPONSE (voir registry.json)
+  // ---------------------------------------------------------------------
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
 
-// ---------------------------------------------------------------------
-// 7. Passerelle avec l'interface mère (routeur existant)
-// ---------------------------------------------------------------------
-function emettreVersInterfaceMere(resultat, requestId) {
-  if (window.parent === window) return;
-  window.parent.postMessage({
-    source: "module-recherche",
-    type: "resultat_recherche",
-    requestId: requestId || null,
-    payload: resultat
-  }, "*");
-}
+    const requestId = donnees.requestId;
+    const query = donnees.payload && donnees.payload.query;
 
-window.addEventListener("message", function (evenement) {
-  const donnees = evenement.data;
-  if (!donnees || donnees.target !== "module-recherche") return;
-  if (donnees.type !== "lancer_recherche") return;
-  const requestId = donnees.requestId || null;
-  lancerRecherche(donnees.prompt).then(function (resultat) {
-    emettreVersInterfaceMere(resultat, requestId);
+    traiterRequete(query).then(function (result) {
+      window.parent.postMessage({
+        type: "MS_RESPONSE",
+        requestId: requestId,
+        result: result
+      }, "*");
+    });
   });
-});
-
-button.addEventListener("click", function () { lancerRecherche(); });
-input.addEventListener("keydown", function (evenement) {
-  if (evenement.key === "Enter") { evenement.preventDefault(); lancerRecherche(); }
-});
-
-window.RechercheModule = {
-  lancer: function (prompt) { return lancerRecherche(prompt); }
-};
+})();
 </script>
-
 </body>
 </html>
