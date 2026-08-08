@@ -364,35 +364,91 @@ Le tableau "sources" doit contenir uniquement des sources réellement utilisées
   }
 
   // ---------------------------------------------------------------------
-  // 5. Orchestration principale
+  // 5. Normalisation du résultat : format stable, quel que soit l'issue
+  //    (succès, réponse vide, échec réseau, JSON malformé...)
   // ---------------------------------------------------------------------
-  async function lancerRecherche() {
-    const promptBrut = input.value;
+  function normaliserResultat(objet) {
+    const article = (objet && typeof objet.article === "string") ? objet.article.trim() : "";
+    const sourcesBrutes = (objet && Array.isArray(objet.sources)) ? objet.sources : [];
+    const sources = sourcesBrutes
+      .filter(function (s) { return s && typeof s.url === "string" && /^https?:\/\//i.test(s.url); })
+      .map(function (s) {
+        return { titre: (s.titre && s.titre.trim()) ? s.titre.trim() : s.url, url: s.url };
+      });
+    return { article: article, sources: sources };
+  }
+
+  // ---------------------------------------------------------------------
+  // 6. Orchestration principale
+  //    Retourne toujours { article, sources } — jamais d'exception qui
+  //    remonte à l'appelant, jamais de fragment technique dans "article".
+  // ---------------------------------------------------------------------
+  async function lancerRecherche(promptExterne) {
+    const promptBrut = (typeof promptExterne === "string") ? promptExterne : input.value;
     const sujet = extraireSujet(promptBrut);
+
+    if (typeof promptExterne === "string") {
+      input.value = promptExterne;
+    }
 
     if (!sujet) {
       afficherEtatVide();
-      return;
+      const resultatVide = { article: "", sources: [] };
+      emettreVersInterfaceMere(resultatVide);
+      return resultatVide;
     }
 
     reinitialiserAffichage();
     loadingEl.classList.add("active");
     button.disabled = true;
 
+    let resultat;
     try {
       const texteModele = await interrogerModele(sujet);
       const objet = extraireJSON(texteModele);
-      afficherResultat(objet);
+      resultat = normaliserResultat(objet);
     } catch (erreur) {
-      // Aucune trace technique n'est jamais exposée à l'interface.
-      afficherEtatVide();
+      // Aucune trace technique n'est jamais exposée à l'interface ni
+      // renvoyée à l'interface mère : on retombe sur un résultat vide et propre.
+      resultat = { article: "", sources: [] };
     } finally {
       loadingEl.classList.remove("active");
       button.disabled = false;
     }
+
+    afficherResultat(resultat);
+    emettreVersInterfaceMere(resultat);
+    return resultat;
   }
 
-  button.addEventListener("click", lancerRecherche);
+  // ---------------------------------------------------------------------
+  // 7. Passerelle avec l'interface mère (routeur existant)
+  //    - Écoute les demandes entrantes via postMessage
+  //    - Renvoie le résultat au même format que la demande d'origine,
+  //      pour rester compatible avec le routeur en place sans le modifier.
+  // ---------------------------------------------------------------------
+  function emettreVersInterfaceMere(resultat, requestId) {
+    if (window.parent === window) return; // pas intégré dans un cadre parent
+    window.parent.postMessage({
+      source: "module-recherche",
+      type: "resultat_recherche",
+      requestId: requestId || null,
+      payload: resultat // { article, sources: [{ titre, url }] }
+    }, "*");
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.target !== "module-recherche") return;
+    if (donnees.type !== "lancer_recherche") return;
+
+    const requestId = donnees.requestId || null;
+    lancerRecherche(donnees.prompt).then(function (resultat) {
+      emettreVersInterfaceMere(resultat, requestId);
+    });
+  });
+
+  button.addEventListener("click", function () { lancerRecherche(); });
   input.addEventListener("keydown", function (evenement) {
     if (evenement.key === "Enter") {
       evenement.preventDefault();
@@ -400,12 +456,13 @@ Le tableau "sources" doit contenir uniquement des sources réellement utilisées
     }
   });
 
-  // API exposée pour l'interface mère, si elle souhaite piloter le module
-  // par programmation plutôt que via les champs visibles.
+  // API exposée pour l'interface mère si elle est dans le même contexte
+  // JS (iframe same-origin ou composant monté directement), en plus de
+  // la passerelle postMessage ci-dessus pour les cas cross-origin.
   window.RechercheModule = {
+    // Retourne une Promise résolue avec { article, sources }.
     lancer: function (prompt) {
-      input.value = prompt;
-      return lancerRecherche();
+      return lancerRecherche(prompt);
     }
   };
 })();
