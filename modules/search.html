@@ -2,51 +2,120 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Recherche Web - Client Side</title>
+    <title>Recherche Web - Wikipédia</title>
     <style>
-        body { font-family: -apple-system, sans-serif; background: #F5F2EC; color: #2B2B2B; max-width: 700px; margin: 50px auto; padding: 20px; }
-        .search-container { display: flex; gap: 10px; margin-bottom: 30px; }
-        input { flex: 1; padding: 12px; border: 1px solid #A8B09A; border-radius: 6px; }
-        button { background: #A8B09A; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; }
-        .result-item { background: white; padding: 15px; margin-bottom: 10px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        h3 { margin-top: 0; color: #2B2B2B; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background: #F5F2EC; 
+            color: #2B2B2B; 
+            max-width: 750px; 
+            margin: 40px auto; 
+            padding: 20px; 
+        }
+        h1 { font-size: 1.6rem; color: #2B2B2B; margin-bottom: 20px; }
+        .search-box { display: flex; gap: 10px; margin-bottom: 25px; }
+        input[type="text"] { 
+            flex: 1; 
+            padding: 12px 15px; 
+            border: 1px solid #A8B09A; 
+            border-radius: 6px; 
+            font-size: 1rem; 
+            background: #fff;
+            outline: none;
+        }
+        input[type="text"]:focus { border-color: #3b5323; }
+        button { 
+            background: #A8B09A; 
+            color: #fff; 
+            border: none; 
+            padding: 12px 20px; 
+            border-radius: 6px; 
+            font-weight: bold; 
+            cursor: pointer; 
+        }
+        button:hover { background: #959e86; }
+        .results { display: flex; flex-direction: column; gap: 12px; }
+        .result-item { 
+            background: #fff; 
+            padding: 15px 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+        }
+        .result-item h3 { margin: 0 0 8px 0; font-size: 1.1rem; }
+        .result-item a { color: #3b5323; text-decoration: none; font-weight: 600; }
+        .result-item a:hover { text-decoration: underline; }
+        .result-item p { margin: 0; color: #555; font-size: 0.95rem; line-height: 1.4; }
+        .status { color: #666; font-style: italic; }
     </style>
 </head>
 <body>
-    <h1>Recherche Web</h1>
-    <div class="search-container">
-        <input type="text" id="query" placeholder="Rechercher sur le web...">
-        <button onclick="search()">Rechercher</button>
+
+    <h1>Recherche d'informations</h1>
+    
+    <div class="search-box">
+        <input type="text" id="query" placeholder="Entrez votre sujet (ex: Intelligence artificielle)..." onkeypress="checkEnter(event)">
+        <button onclick="performSearch()">Rechercher</button>
     </div>
-    <div id="results"></div>
+    
+    <div class="results" id="results">
+        <p class="status">Entrez un terme ci-dessus pour lancer la recherche.</p>
+    </div>
 
     <script>
-        async function search() {
-            const q = document.getElementById('query').value;
+        function checkEnter(event) {
+            if (event.key === 'Enter') {
+                performSearch();
+            }
+        }
+
+        function performSearch() {
+            const query = document.getElementById('query').value.trim();
             const container = document.getElementById('results');
-            container.innerHTML = "Recherche en cours...";
             
-            // Utilisation de l'API DuckDuckGo via un proxy public pour éviter CORS
-            const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&pretty=1`;
+            if (!query) {
+                container.innerHTML = '<p class="status">Veuillez entrer un mot-clé valide.</p>';
+                return;
+            }
             
-            try {
-                const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
-                const data = await response.json();
-                const json = JSON.parse(data.contents);
+            container.innerHTML = '<p class="status">Recherche en cours...</p>';
+            
+            // Utilisation de l'API Wikipédia en mode JSONP (contourne CORS nativement)
+            const script = document.createElement('script');
+            const callbackName = 'wikiCallback_' + Math.round(Math.random() * 100000);
+            
+            window[callbackName] = function(data) {
+                // Nettoyage du script injecté
+                document.body.removeChild(script);
+                delete window[callbackName];
                 
-                container.innerHTML = "";
-                if(json.AbstractText) {
-                    container.innerHTML += `<div class="result-item"><h3>Résumé</h3><p>${json.AbstractText}</p></div>`;
+                container.innerHTML = '';
+                
+                const titles = data[1] || [];
+                const snippets = data[2] || [];
+                const urls = data[3] || [];
+                
+                if (titles.length === 0) {
+                    container.innerHTML = '<p class="status">Aucun résultat trouvé pour cette recherche.</p>';
+                    return;
                 }
                 
-                json.RelatedTopics.forEach(item => {
-                    if(item.Text) {
-                        container.innerHTML += `<div class="result-item"><p>${item.Text}</p></div>`;
-                    }
-                });
-            } catch (e) {
-                container.innerHTML = "Erreur de connexion. Veuillez réessayer.";
-            }
+                for (let i = 0; i < titles.length; i++) {
+                    const title = titles[i];
+                    const snippet = snippets[i] || 'Pas de description disponible.';
+                    const url = urls[i];
+                    
+                    container.innerHTML += `
+                        <div class="result-item">
+                            <h3><a href="${url}" target="_blank">${title}</a></h3>
+                            <p>${snippet}</p>
+                        </div>
+                    `;
+                }
+            };
+            
+            const apiUrl = `https://fr.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=5&namespace=0&format=json&callback=${callbackName}`;
+            script.src = apiUrl;
+            document.body.appendChild(script);
         }
     </script>
 </body>
