@@ -254,3 +254,14 @@ class Router {
     return this.journal;
   }
 }
+// --- Module Secure Storage ---
+if (userMessage.startsWith("sauvegarde:")) {
+    const contenu = userMessage.replace("sauvegarde:", "").trim();
+    await window.secureStorage.setItem("ma_note_secrete", contenu, "MonMotDePasse123");
+    return "Donnée chiffrée et sauvegardée en toute sécurité !";
+}
+
+if (userMessage.startsWith("lis:")) {
+    const resultat = await window.secureStorage.getItem("ma_note_secrete", "MonMotDePasse123");
+    return `Voici ta note secrète : ${resultat}`;
+}
