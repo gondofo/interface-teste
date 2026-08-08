@@ -6,14 +6,13 @@
 
     <script>
         /* ==========================================================
-            1. EXTRACTION INTELLIGENTE DU SUJET (NETTOYAGE DES FORMULES)
+            1. NETTOYAGE DE L'INTENTION UTILISATEUR (EXTRACTION DU SUJET)
             ========================================================== */
         function extractKeywords(rawQuery) {
             if (!rawQuery) return '';
             
             let query = rawQuery.toLowerCase().trim();
 
-            // Liste des tournures de phrases courantes à éliminer pour ne garder que le sujet cible
             const prefixesToRemove = [
                 "fais une recherche sur", "fais une recherche", "cherche sur le web",
                 "recherche sur", "cherche", "dis-moi tout sur", "parle-moi de",
@@ -100,7 +99,7 @@
         }
 
         /* ==========================================================
-            3. RECHERCHE WEB GÉNÉRALISTE MULTI-SOURCES (DuckDuckGo Lite)
+            3. RECHERCHE SUR LE WEB GLOBAL (DuckDuckGo Lite)
             ========================================================== */
         function fetchWebSearchResults(query, signal) {
             const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
@@ -158,7 +157,7 @@
         const SEARCH_SOURCES = [fetchWebSearchResults];
 
         function executeSearch(cleanQuery, callback) {
-            setStatusIfReady('Exploration approfondie du web et rédaction de la synthèse...');
+            setStatusIfReady('Exploration globale du web et rédaction de la synthèse...');
 
             let hasResponded = false;
             const controller = new AbortController();
@@ -200,7 +199,7 @@
         }
 
         /* ==========================================================
-            4. RÉDACTION DIRECTE, FLUIDE ET STRUCTUREE
+            4. SYNTHÈSE ET RÉDACTION AUTOMATIQUE (FLUIDE & STRUCTURÉE)
             ========================================================== */
         function buildStructuredSynthesis(results, cleanQuery) {
             if (!results || results.length === 0) {
@@ -221,7 +220,6 @@
                 synthesizedBody += '.';
             }
 
-            // Capitalisation propre du sujet extrait pour démarrer la phrase de synthèse
             const capitalizedSubject = cleanQuery.charAt(0).toUpperCase() + cleanQuery.slice(1);
             return `${capitalizedSubject} : ${synthesizedBody}`;
         }
