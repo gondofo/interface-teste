@@ -157,7 +157,7 @@
         const SEARCH_SOURCES = [fetchWebSearchResults];
 
         function executeSearch(cleanQuery, callback) {
-            setStatusIfReady('Exploration globale du web et rédaction de la synthèse...');
+            setStatusIfReady('Recherche et extraction des contenus en cours...');
 
             let hasResponded = false;
             const controller = new AbortController();
@@ -166,8 +166,8 @@
                 if (!hasResponded) {
                     hasResponded = true;
                     controller.abort();
-                    const defaultParagraph = `L'analyse des ressources disponibles permet de dégager des axes essentiels et des perspectives globales sur ce sujet.`;
-                    setStatusIfReady('Synthèse standard établie.');
+                    const defaultParagraph = `Informations non disponibles pour cette requête dans le délai imparti.`;
+                    setStatusIfReady('Délai dépassé.');
                     callback([], defaultParagraph);
                 }
             }, SEARCH_TIMEOUT_MS);
@@ -183,7 +183,7 @@
                     clearTimeout(safetyTimeout);
                     controller.abort();
 
-                    const synthesizedParagraph = buildStructuredSynthesis(results, cleanQuery);
+                    const synthesizedParagraph = buildDirectSynthesis(results);
                     renderResultsIfReady(results, synthesizedParagraph);
                     callback(results, synthesizedParagraph);
                 })
@@ -192,18 +192,18 @@
                     hasResponded = true;
                     clearTimeout(safetyTimeout);
 
-                    const fallbackParagraph = `L'examen des données collectées met en lumière les aspects fondamentaux et les caractéristiques principales associés à cette thématique.`;
-                    setStatusIfReady('Synthèse globale établie.');
+                    const fallbackParagraph = `Aucun contenu textuel exploitable n'a pu être extrait du web pour ce sujet.`;
+                    setStatusIfReady('Recherche infructueuse.');
                     callback([], fallbackParagraph);
                 });
         }
 
         /* ==========================================================
-            4. SYNTHÈSE ET RÉDACTION AUTOMATIQUE (FLUIDE & STRUCTURÉE)
+            4. SYNTHÈSE DIRECTE SANS PHRASE DE REMPLISSAGE
             ========================================================== */
-        function buildStructuredSynthesis(results, cleanQuery) {
+        function buildDirectSynthesis(results) {
             if (!results || results.length === 0) {
-                return `L'étude approfondie de ce sujet met en avant une vue d'ensemble structurée à partir des données de référence actuelles.`;
+                return `Aucun extrait pertinent n'a été trouvé.`;
             }
 
             const validSnippets = results
@@ -211,17 +211,17 @@
                 .filter(text => text.length > 20);
 
             if (validSnippets.length === 0) {
-                return `L'analyse des informations recueillies permet de souligner les points clés et les dynamiques principales inhérentes à ce domaine.`;
+                return `Les extraits disponibles sont insuffisants pour rédiger une synthèse détaillée.`;
             }
 
-            let synthesizedBody = validSnippets.slice(0, 3).join(" En complément, ");
+            // Concaténation directe et brute des meilleurs extraits factuels du web
+            let rawSynthesis = validSnippets.join(" ");
             
-            if (!synthesizedBody.endsWith('.')) {
-                synthesizedBody += '.';
+            if (!rawSynthesis.endsWith('.')) {
+                rawSynthesis += '.';
             }
 
-            const capitalizedSubject = cleanQuery.charAt(0).toUpperCase() + cleanQuery.slice(1);
-            return `${capitalizedSubject} : ${synthesizedBody}`;
+            return rawSynthesis;
         }
 
         function setQueryInputIfReady(query) {
@@ -355,13 +355,13 @@
     <h1>Générateur de Synthèse Documentaire</h1>
     
     <div class="search-box">
-        <input type="text" id="query" placeholder="Ex: Fais une recherche sur Paris..." onkeypress="checkEnter(event)">
+        <input type="text" id="query" placeholder="Ex: Paris..." onkeypress="checkEnter(event)">
         <button onclick="performManualSearch()">Générer</button>
     </div>
     
     <div class="results" id="results">
         <div class="status-card">
-            <p class="status">Entrez une instruction ou un sujet pour générer une synthèse rédigée.</p>
+            <p class="status">Entrez un sujet pour afficher le contenu brut synthétisé.</p>
         </div>
     </div>
 
@@ -387,7 +387,7 @@
             let sourcesHtml = '';
             if (results && results.length > 0) {
                 const links = results.map(r => `<li><a href="${r.url}" target="_blank" rel="noopener">${r.title}</a> : <em>${r.snippet.substring(0, 90)}...</em></li>`).join('');
-                sourcesHtml = `<div class="sources-list"><strong>Sources de référence :</strong><ul style="margin: 8px 0 0 20px; padding:0; line-height: 1.4;">${links}</ul></div>`;
+                sourcesHtml = `<div class="sources-list"><strong>Sources :</strong><ul style="margin: 8px 0 0 20px; padding:0; line-height: 1.4;">${links}</ul></div>`;
             }
 
             container.innerHTML = `
