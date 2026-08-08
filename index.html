@@ -8,19 +8,19 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:            #08090c;
-    --panel:         #14181f;
-    --panel-2:       #1a1f28;
+    --bg:        #08090c;
+    --panel:     #14181f;
+    --panel-2:   #1a1f28;
     --bulle-systeme: #14181f;
     --bulle-user:    #7c9cff;
-    --line:          #212632;
-    --text:          #e7e9ee;
+    --line:      #212632;
+    --text:      #e7e9ee;
     --text-user:     #08090c;
-    --muted:         #6b7280;
-    --accent:        #7c9cff;
+    --muted:     #6b7280;
+    --accent:    #7c9cff;
     --accent-dim:    #35406e;
-    --ok:            #34d399;
-    --err:           #f87171;
+    --ok:        #34d399;
+    --err:       #f87171;
     --mono: 'JetBrains Mono', ui-monospace, monospace;
     --sans: 'Space Grotesk', system-ui, sans-serif;
     --largeur-max: 720px;
@@ -36,7 +36,7 @@
     font-family:var(--sans);
     display:flex;
     flex-direction:column;
-    overflow:hidden; /* le scroll se fait dans #fil, pas dans la page */
+    overflow:hidden;
   }
 
   /* ---------- En-tête ---------- */
@@ -114,28 +114,29 @@
   .message{
     display:flex;
     flex-direction:column;
-    max-width:78%;
+    max-width:85%;
     animation:apparition .22s ease;
   }
   @keyframes apparition{
     from{ opacity:0; transform:translateY(6px); }
     to{ opacity:1; transform:translateY(0); }
   }
-  .message.utilisateur{ align-self:flex-end; align-items:flex-end; }
-  .message.systeme{ align-self:flex-start; align-items:flex-start; }
+  .message.utilisateur{ align-self:flex-end; align-items:flex-end; max-width:78%; }
+  .message.systeme{ align-self:flex-start; align-items:flex-start; width:100%; }
 
   .bulle{
     padding:11px 15px;
     border-radius:16px;
     font-size:14.5px;
     line-height:1.55;
-    white-space:pre-wrap;
     word-break:break-word;
+    width:100%;
   }
   .message.utilisateur .bulle{
     background:var(--bulle-user);
     color:var(--text-user);
     border-bottom-right-radius:4px;
+    white-space:pre-wrap;
   }
   .message.systeme .bulle{
     background:var(--bulle-systeme);
@@ -308,30 +309,21 @@
 
   <script src="./router.js"></script>
   <script>
-    /**
-     * Script de liaison entre l'Interface Mère (chat) et le Router.
-     * Toute la logique d'orchestration vit dans router.js ; ce bloc traduit
-     * la conversation utilisateur en appels au routeur et affiche les
-     * réponses sous forme de bulles de chat, avec le fil qui défile
-     * automatiquement vers le bas à chaque nouveau message.
-     */
     const filEl        = document.getElementById('fil');
-    const filInt        = document.getElementById('filInterieur');
-    const accueilEl     = document.getElementById('accueil');
-    const form           = document.getElementById('formPrompt');
-    const champ           = document.getElementById('champPrompt');
-    const btn             = document.getElementById('btnEnvoyer');
-    const boutonPlus       = document.getElementById('boutonPlus');
-    const pointReg         = document.getElementById('pointRegistre');
-    const texteReg         = document.getElementById('texteRegistre');
+    const filInt       = document.getElementById('filInterieur');
+    const accueilEl    = document.getElementById('accueil');
+    const form         = document.getElementById('formPrompt');
+    const champ        = document.getElementById('champPrompt');
+    const btn          = document.getElementById('btnEnvoyer');
+    const boutonPlus   = document.getElementById('boutonPlus');
+    const pointReg     = document.getElementById('pointRegistre');
+    const texteReg     = document.getElementById('texteRegistre');
 
-    // Auto-resize du textarea au fil de la saisie
     champ.addEventListener('input', () => {
       champ.style.height = 'auto';
       champ.style.height = Math.min(champ.scrollHeight, 140) + 'px';
     });
 
-    // Entrée = envoyer / Maj+Entrée = nouvelle ligne
     champ.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -339,24 +331,15 @@
       }
     });
 
-    // Bouton "+" : réservé pour de futurs ajouts de fichiers/images
     boutonPlus.addEventListener('click', () => {
       console.info('Ajout de fichier/photo : fonctionnalité à venir.');
     });
 
-    /** Fait défiler le fil de discussion tout en bas. */
     function defilerVersLeBas() {
       filEl.scrollTop = filEl.scrollHeight;
     }
 
-    /**
-     * Ajoute une bulle de message au fil.
-     * @param {'utilisateur'|'systeme'} role
-     * @param {string} texte
-     * @param {object} options - { etat: 'attente'|'erreur'|null }
-     * @returns {HTMLElement} l'élément .message créé
-     */
-    function ajouterMessage(role, texte, options = {}) {
+    function ajouterMessage(role, contenuHTML, options = {}) {
       if (accueilEl) accueilEl.remove();
 
       const messageEl = document.createElement('div');
@@ -364,7 +347,13 @@
 
       const bulleEl = document.createElement('div');
       bulleEl.className = 'bulle' + (options.etat ? ` ${options.etat}` : '');
-      bulleEl.innerHTML = texte;
+      
+      // Utilisation directe de innerHTML pour que le HTML se transforme en vrais éléments visuels
+      if (role === 'utilisateur') {
+        bulleEl.textContent = contenuHTML; // Texte sécurisé pour l'utilisateur
+      } else {
+        bulleEl.innerHTML = contenuHTML; // HTML pur pour le système / cartes de services
+      }
 
       messageEl.appendChild(bulleEl);
       filInt.appendChild(messageEl);
@@ -372,15 +361,13 @@
       return messageEl;
     }
 
-    /** Remplace le contenu d'un message existant (utilisé pour l'état "en train d'écrire"). */
-    function mettreAJourMessage(messageEl, texte, etat) {
+    function mettreAJourMessage(messageEl, contenuHTML, etat) {
       const bulleEl = messageEl.querySelector('.bulle');
       bulleEl.className = 'bulle' + (etat ? ` ${etat}` : '');
-      bulleEl.innerHTML = texte;
+      bulleEl.innerHTML = contenuHTML; // Injection directe des cartes HTML
       defilerVersLeBas();
     }
 
-    /** Ajoute sous une bulle système la ligne de traçabilité repliable (service, durée, JSON brut). */
     function ajouterMeta(messageEl, resultat) {
       const succes = resultat && resultat.succes !== false;
       const metaEl = document.createElement('div');
@@ -394,21 +381,16 @@
       detailEl.className = 'detail-json';
       detailEl.textContent = JSON.stringify(resultat, null, 2);
 
-      metaEl.addEventListener('click', () => detailEl.classList.toggle('ouvert'));
+      metaEl.addEventListener('click', () => detailEl.classList.ouvert ? detailEl.classList.remove('ouvert') : detailEl.classList.add('ouvert'));
 
       messageEl.appendChild(metaEl);
       messageEl.appendChild(detailEl);
       defilerVersLeBas();
     }
 
-    // ------------------------------------------------------------------
-    // Initialisation du routeur (logique existante de router.js, inchangée)
-    // ------------------------------------------------------------------
     const router = new Router({
       registryUrl: './registry.json',
       onLog(entree) {
-        // La trace complète reste disponible via router.getJournal() et la
-        // console du navigateur pour le débogage, sans encombrer le chat.
         console.debug('[router]', entree.evenement, entree.details);
       }
     });
@@ -423,21 +405,16 @@
         texteReg.textContent = 'échec du chargement du registre';
       });
 
-    // ------------------------------------------------------------------
-    // Soumission d'un message
-    // ------------------------------------------------------------------
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const prompt = champ.value.trim();
       if (!prompt) return;
 
-      // 1. Bulle utilisateur, alignée à droite
-      ajouterMessage('utilisateur', echapperHTML(prompt));
+      ajouterMessage('utilisateur', prompt);
       champ.value = '';
       champ.style.height = 'auto';
       btn.disabled = true;
 
-      // 2. Bulle système temporaire "en train d'écrire", alignée à gauche
       const messageAttente = ajouterMessage(
         'systeme',
         '<span class="points-attente"><span></span><span></span><span></span></span>',
@@ -448,9 +425,16 @@
         const resultat = await router.router(prompt);
         const succes = resultat && resultat.succes !== false;
 
+        let renduFinal = '';
+        if (succes) {
+          renduFinal = formaterResultat(resultat);
+        } else {
+          renduFinal = `✕ ${echapperHTML(resultat?.erreur || 'Échec inconnu')}`;
+        }
+
         mettreAJourMessage(
           messageAttente,
-          succes ? formaterResultat(resultat) : `✕ ${echapperHTML(resultat?.erreur || 'Échec inconnu')}`,
+          renduFinal,
           succes ? null : 'erreur'
         );
         ajouterMeta(messageAttente, resultat);
@@ -462,21 +446,43 @@
       }
     });
 
-    /** Formate le résultat JSON d'un micro-service en texte lisible pour la bulle. */
+    /** Formate et extrait le HTML propre du résultat en ignorant les structures de données brutes. */
     function formaterResultat(resultat) {
+      // 1. Si le micro-service a renvoyé directement une propriété HTML formatée (ex: "reponse")
+      if (resultat.reponse && typeof resultat.reponse === 'string' && resultat.reponse.trim().startsWith('<')) {
+        return resultat.reponse;
+      }
+      if (resultat.html && typeof resultat.html === 'string') {
+        return resultat.html;
+      }
+
+      // 2. Si le résultat contient un tableau structuré (ex: resultats de recherche)
+      if (resultat.resultats && Array.isArray(resultat.resultats)) {
+        let html = "<div style='display:flex; flex-direction:column; gap:10px;'>";
+        resultat.resultats.forEach(r => {
+          html += `<div style='background:#1a1f28; padding:12px; border-radius:10px; border:1px solid var(--line);'>
+              <h4 style='margin:0 0 6px 0; font-size:1rem;'><a href='${r.url}' target='_blank' style='color:var(--accent); text-decoration:none;'>${echapperHTML(r.title)}</a></h4>
+              <p style='margin:0; color:var(--muted); font-size:0.9rem; line-height:1.4;'>${echapperHTML(r.snippet)}</p>
+          </div>`;
+        });
+        html += "</div>";
+        return html;
+      }
+
+      // 3. Fallback sur une seule clé principale ou affichage textuel propre
       const cles = Object.keys(resultat).filter(c => !c.startsWith('_') && c !== 'succes');
       if (cles.length === 0) return 'Réponse vide.';
-      // Une seule clé "principale" (cas courant : resume, resultat, texte_traduit…) → affichage brut
+      
       if (cles.length === 1) {
         const val = resultat[cles[0]];
         return typeof val === 'object' ? echapperHTML(JSON.stringify(val)) : echapperHTML(String(val));
       }
+
       return cles
-        .map(c => `<strong>${echapperHTML(c)}</strong> : ${typeof resultat[c] === 'object' ? echapperHTML(JSON.stringify(resultat[c])) : echapperHTML(String(resultat[c]))}`)
-        .join('<br>');
+        .map(c => `<div><strong>${echapperHTML(c)}</strong> : ${typeof resultat[c] === 'object' ? echapperHTML(JSON.stringify(resultat[c])) : echapperHTML(String(resultat[c]))}</div>`)
+        .join('');
     }
 
-    /** Échappe le HTML pour éviter toute injection lors de l'affichage de texte utilisateur/service. */
     function echapperHTML(str) {
       const div = document.createElement('div');
       div.textContent = str;
