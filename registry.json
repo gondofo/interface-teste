@@ -18,6 +18,12 @@
         "texte": "string (obligatoire) — le texte source à résumer",
         "longueur_max": "number (optionnel, défaut: 3) — nombre de phrases dans le résumé"
       },
+      "web-search": {
+  "name": "Web Search Microservice",
+  "endpoint": "https://votre-utilisateur.github.io/votre-repo/",
+  "type": "static-html",
+  "description": "Microservice de recherche web côté client (GitHub Pages)"
+},
       "format_reponse": {
         "succes": true,
         "resume": "string",
