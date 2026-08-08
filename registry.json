@@ -6,7 +6,6 @@
     "protocole": "iframe-postMessage",
     "note_protocole": "Chaque micro-service est chargé dans une iframe invisible. La charge utile est transmise via window.postMessage({type:'MS_REQUEST', requestId, payload}). Le micro-service répond via window.postMessage({type:'MS_RESPONSE', requestId, result}). Ce mécanisme fonctionne cross-origin sans configuration serveur (CORS), contrairement à fetch()."
   },
-
   "services": [
     {
       "id": "resume-texte",
@@ -18,26 +17,6 @@
         "texte": "string (obligatoire) — le texte source à résumer",
         "longueur_max": "number (optionnel, défaut: 3) — nombre de phrases dans le résumé"
       },
-     "web-search": {
-  "name": "Web Search Microservice",
-  "endpoint": "https://votre-utilisateur.github.io/votre-repo/",
-  "type": "static-html",
-  "description": "Microservice de recherche web côté client (GitHub Pages)",
-  "keywords": [
-    "recherche", "rechercher", "cherche", "chercher", "trouve", "trouver", 
-    "web", "internet", "google", "duckduckgo", "information", "informations", 
-    "infos", "actualité", "actualités", "news", "c'est quoi", "qu'est-ce que", 
-    "qui est", "où est", "comment", "pourquoi", "définition", "explique", 
-    "donne-moi", "montre-moi", "liste", "explorer", "consulter", "URL", "site"
-  ],
-  "triggers": [
-    "recherche", "rechercher", "cherche", "chercher", "trouve", "trouver", 
-    "web", "internet", "google", "duckduckgo", "information", "informations", 
-    "infos", "actualité", "actualités", "news", "c'est quoi", "qu'est-ce que", 
-    "qui est", "où est", "comment", "pourquoi", "définition", "explique", 
-    "donne-moi", "montre-moi", "liste", "explorer", "consulter", "URL", "site"
-  ]
-},
       "format_reponse": {
         "succes": true,
         "resume": "string",
@@ -92,6 +71,27 @@
         "timestamp": "number"
       },
       "timeout_ms": 2000
+    },
+    {
+      "id": "web-search",
+      "nom": "Microservice de recherche web",
+      "fonction": "Recherche des informations textuelles sur le web et les actualités en temps réel.",
+      "url": "./module/search.html",
+      "mots_cles": [
+        "recherche", "rechercher", "cherche", "chercher", "trouve", "trouver",
+        "web", "internet", "google", "duckduckgo", "information", "informations",
+        "infos", "actualité", "actualités", "news", "c'est quoi", "qu'est-ce que",
+        "qui est", "où est", "comment", "pourquoi", "définition", "explique",
+        "donne-moi", "montre-moi", "liste", "explorer", "consulter", "URL", "site"
+      ],
+      "parametres_attendus": {
+        "query": "string (obligatoire) — le sujet ou la question à rechercher"
+      },
+      "format_reponse": {
+        "succes": true,
+        "resultats": "array"
+      },
+      "timeout_ms": 5000
     }
   ]
 }
