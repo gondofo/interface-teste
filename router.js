@@ -93,6 +93,7 @@ class Router {
         return { format: "long" };
       case "recherche":
       case "web-search":
+      case "sage-html":
         return { query: prompt };
       default:
         return { texte: prompt };
@@ -101,7 +102,7 @@ class Router {
 
   /**
    * Appelle un micro-service distant via iframe + postMessage,
-   * extrait proprement les snippets pour générer un paragraphe de synthèse.
+   * extrait proprement les snippets ou le texte pour générer un paragraphe de synthèse.
    */
   appelerService(service, payload) {
     return new Promise((resolve, reject) => {
@@ -139,14 +140,14 @@ class Router {
         const resultatBrut = data.result || {};
         let contenuUI = "";
 
-        // 1. Si le micro-service renvoie déjà une réponse textuelle/HTML formatée
+        // 1. Priorité au HTML de synthèse ou au texte brut de la réponse s'ils existent
         if (resultatBrut.reponse && typeof resultatBrut.reponse === 'string' && resultatBrut.reponse.trim().length > 0) {
           contenuUI = resultatBrut.reponse;
         } 
-        // 2. Si le micro-service renvoie un tableau de résultats/snippets (cas recherche)
+        // 2. Mapping explicite du tableau de résultats pour extraire et assembler chaque 'snippet', 'description' ou 'title'
         else if (resultatBrut.resultats && Array.isArray(resultatBrut.resultats) && resultatBrut.resultats.length > 0) {
           const phrases = resultatBrut.resultats
-            .map(r => (r.snippet || r.title || '').trim())
+            .map(r => (r.snippet || r.description || r.title || '').trim())
             .filter(text => text.length > 10);
 
           if (phrases.length > 0) {
@@ -154,15 +155,13 @@ class Router {
             if (!texteUnifie.endsWith('.')) {
               texteUnifie += '.';
             }
-            // Injection explicite en tant que paragraphe de synthèse fluide (contexte textuel)
             contenuUI = `<p style="margin: 0; line-height: 1.6;">${texteUnifie}</p>`;
           }
         }
 
-        // 3. Fallback ultime si aucun contenu n'a pu être extrait des snippets ou de la réponse
+        // 3. Fallback de sécurité si aucun champ textuel n'est trouvé
         if (!contenuUI) {
-          const fallbackText = resultatBrut.texte || resultatBrut.expression || JSON.stringify(resultatBrut);
-          contenuUI = `<p style="margin: 0; line-height: 1.6; color: #1A1A1A;">${fallbackText}</p>`;
+          contenuUI = `<p style="margin: 0; color: #d9534f;">Information insuffisante : aucun contenu textuel ou snippet exploitable trouvé.</p>`;
         }
 
         resolve({
