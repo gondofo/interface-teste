@@ -1,29 +1,47 @@
 /**
  * ==========================================================================
  *  ROUTER.JS — Cœur du système de routage de l'Interface Mère
- * ==========================================================================
- *
- *  Responsabilités :
- *   1. Charger et parser le Registre (registry.json).
- *   2. Analyser la requête utilisateur pour déterminer quel(s) micro-service(s)
- *      sont pertinents (matching par mots-clés).
- *   3. Orchestrer l'appel asynchrone au micro-service choisi via le protocole
- *      iframe + postMessage (fonctionne cross-origin, sans backend).
- *   4. Journaliser (logger) chaque étape du flux et injecter proprement le HTML.
+ *  (Avec intégration d'un LLM local embarqué via Transformers.js)
  * ==========================================================================
  */
 
 class Router {
   constructor({ registryUrl = "./registry.json", onLog = () => {} } = {}) {
     this.registryUrl = registryUrl;
-    this.registry = null;             // Contenu chargé du registre
-    this.onLog = onLog;               // Callback UI pour afficher la trace en direct
-    this.journal = [];                // Historique local complet (traçabilité)
+    this.registry = null;
+    this.onLog = onLog;
+    this.journal = [];
+    this.localSummarizer = null; // Instance du LLM local
+    this.isModelLoading = false;
+  }
+
+  /**
+   * Charge et initialise un petit LLM local open-source pour le résumé (exécuté 100% dans le navigateur).
+   */
+  async initialiserLLMLocal() {
+    if (this.localSummarizer || this.isModelLoading) return;
+    this.isModelLoading = true;
+    
+    try {
+      this._log("LLM_CHARGEMENT_DEBUT", { modele: "Xenova/distilbart-cnn-6-6" });
+      
+      // Import dynamique de Transformers.js depuis un CDN ESM officiel pour éviter l'installation de lourds paquets Node
+      const { pipeline } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0');
+      
+      // Téléchargement et mise en cache automatique du petit modèle local dans le navigateur
+      this.localSummarizer = await pipeline('summarization', 'Xenova/distilbart-cnn-6-6');
+      
+      this._log("LLM_CHARGEMENT_SUCCES", { statut: "Prêt" });
+    } catch (err) {
+      this._log("LLM_CHARGEMENT_ERREUR", { erreur: err.message });
+      console.warn("Impossible de charger le LLM local, bascule sur le mode assembleur.", err);
+    } finally {
+      this.isModelLoading = false;
+    }
   }
 
   /**
    * Charge le registre centralisé depuis registry.json.
-   * Doit être appelé une fois avant toute résolution de requête.
    */
   async chargerRegistre() {
     const t0 = performance.now();
@@ -43,8 +61,7 @@ class Router {
   }
 
   /**
-   * Analyse le prompt utilisateur et sélectionne le micro-service le plus
-   * pertinent en comparant les mots-clés du registre au texte de la requête.
+   * Analyse le prompt utilisateur et sélectionne le micro-service pertinent.
    */
   selectionnerService(prompt) {
     if (!this.registry) throw new Error("Registre non chargé. Appeler chargerRegistre() d'abord.");
@@ -74,8 +91,7 @@ class Router {
   }
 
   /**
-   * Construit la charge utile (payload) attendue par le micro-service à
-   * partir du prompt brut.
+   * Construit la charge utile (payload).
    */
   construirePayload(service, prompt) {
     switch (service.id) {
@@ -101,8 +117,7 @@ class Router {
   }
 
   /**
-   * Appelle un micro-service distant via iframe + postMessage,
-   * extrait proprement les snippets ou le texte pour générer un paragraphe de synthèse.
+   * Appelle un micro-service distant et passe le texte brut au LLM local pour rédaction.
    */
   appelerService(service, payload) {
     return new Promise((resolve, reject) => {
@@ -122,7 +137,7 @@ class Router {
         if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
       };
 
-      const ecouteur = (event) => {
+      const ecouteur = async (event) => {
         const data = event.data;
         if (!data || data.type !== "MS_RESPONSE" || data.requestId !== requestId) return;
 
@@ -140,28 +155,53 @@ class Router {
         const resultatBrut = data.result || {};
         let contenuUI = "";
 
-        // 1. Priorité au HTML de synthèse ou au texte brut de la réponse s'ils existent
+        // 1. Extraction des snippets bruts de recherche
+        let texteBrutAssemble = "";
         if (resultatBrut.reponse && typeof resultatBrut.reponse === 'string' && resultatBrut.reponse.trim().length > 0) {
-          contenuUI = resultatBrut.reponse;
-        } 
-        // 2. Mapping explicite du tableau de résultats pour extraire et assembler chaque 'snippet', 'description' ou 'title'
-        else if (resultatBrut.resultats && Array.isArray(resultatBrut.resultats) && resultatBrut.resultats.length > 0) {
-          const phrases = resultatBrut.resultats
+          texteBrutAssemble = resultatBrut.reponse;
+        } else if (resultatBrut.resultats && Array.isArray(resultatBrut.resultats) && resultatBrut.resultats.length > 0) {
+          texteBrutAssemble = resultatBrut.resultats
             .map(r => (r.snippet || r.description || r.title || '').trim())
-            .filter(text => text.length > 10);
+            .filter(text => text.length > 5)
+            .join(" ");
+        }
 
-          if (phrases.length > 0) {
-            let texteUnifie = phrases.join(" ");
-            if (!texteUnifie.endsWith('.')) {
-              texteUnifie += '.';
+        // 2. Si on a du texte brut, on tente de le faire résumer par le LLM local embarqué
+        if (texteBrutAssemble.length > 30) {
+          try {
+            // S'assure que le LLM est chargé (chargement transparent en arrière-plan si besoin)
+            if (!this.localSummarizer && !this.isModelLoading) {
+              await this.initialiserLLMLocal();
             }
-            contenuUI = `<p style="margin: 0; line-height: 1.6;">${texteUnifie}</p>`;
+
+            if (this.localSummarizer) {
+              this._log("LLM_SYNTHESE_DEBUT", { taille_texte: texteBrutAssemble.length });
+              
+              // Génération locale par le modèle IA embarqué
+              const resultatResume = await this.localSummarizer(texteBrutAssemble, {
+                max_length: 130,
+                min_length: 30,
+                do_sample: false
+              });
+
+              if (resultatResume && resultatResume[0]?.summary_text) {
+                const texteRedige = resultatResume[0].summary_text;
+                contenuUI = `<p style="margin: 0; line-height: 1.6;">${texteRedige}</p>`;
+                this._log("LLM_SYNTHESE_SUCCES", { resume: texteRedige });
+              }
+            }
+          } catch (llmErr) {
+            this._log("LLM_SYNTHESE_ERREUR", { erreur: llmErr.message });
           }
         }
 
-        // 3. Fallback de sécurité si aucun champ textuel n'est trouvé
+        // 3. Fallback si le LLM n'est pas encore prêt ou a échoué : on utilise le texte brut nettoyé
         if (!contenuUI) {
-          contenuUI = `<p style="margin: 0; color: #d9534f;">Information insuffisante : aucun contenu textuel ou snippet exploitable trouvé.</p>`;
+          if (texteBrutAssemble) {
+            contenuUI = `<p style="margin: 0; line-height: 1.6;">${texteBrutAssemble}</p>`;
+          } else {
+            contenuUI = `<p style="margin: 0; color: #d9534f;">Information insuffisante : aucun contenu exploitable trouvé.</p>`;
+          }
         }
 
         resolve({
@@ -177,7 +217,7 @@ class Router {
         nettoyer();
         this._log("APPEL_TIMEOUT", { service: service.id, requestId, timeout_ms: service.timeout_ms });
         reject(new Error(`Timeout : le micro-service « ${service.id} » n'a pas répondu à temps.`));
-      }, service.timeout_ms || 5000);
+      }, service.timeout_ms || 10000); // Délai un peu plus large pour laisser le LLM tourner la première fois
 
       iframe.onload = () => {
         iframe.contentWindow.postMessage(
@@ -193,13 +233,15 @@ class Router {
   }
 
   /**
-   * Point d'entrée principal : route la requête et injecte directement 
-   * le HTML filtré via innerHTML dans le conteneur de l'interface.
+   * Point d'entrée principal : route la requête et injecte le résultat.
    */
   async router(prompt, containerElement = null) {
     this._log("REQUETE_RECUE", { prompt });
 
     if (!this.registry) await this.chargerRegistre();
+
+    // Déclenche le chargement discret du LLM local dès la première interaction si souhaité
+    this.initialiserLLMLocal();
 
     const service = this.selectionnerService(prompt);
     if (!service) {
@@ -220,7 +262,7 @@ class Router {
     try {
       const resultat = await this.appelerService(service, payload);
       if (containerElement && resultat.reponse) {
-        containerElement.innerHTML = resultat.reponse; // Injection propre et unique en innerHTML
+        containerElement.innerHTML = resultat.reponse;
       }
       return resultat;
     } catch (err) {
@@ -237,10 +279,6 @@ class Router {
     }
   }
 
-  /**
-   * Journalisation interne : ajoute une entrée horodatée au journal local
-   * et notifie l'UI via le callback onLog.
-   */
   _log(evenement, details) {
     const entree = {
       horodatage: new Date().toISOString(),
@@ -251,7 +289,6 @@ class Router {
     this.onLog(entree);
   }
 
-  /** Retourne l'historique complet des événements tracés. */
   getJournal() {
     return this.journal;
   }
