@@ -18,11 +18,25 @@
         "texte": "string (obligatoire) — le texte source à résumer",
         "longueur_max": "number (optionnel, défaut: 3) — nombre de phrases dans le résumé"
       },
-      "web-search": {
+     "web-search": {
   "name": "Web Search Microservice",
   "endpoint": "https://votre-utilisateur.github.io/votre-repo/",
   "type": "static-html",
-  "description": "Microservice de recherche web côté client (GitHub Pages)"
+  "description": "Microservice de recherche web côté client (GitHub Pages)",
+  "keywords": [
+    "recherche", "rechercher", "cherche", "chercher", "trouve", "trouver", 
+    "web", "internet", "google", "duckduckgo", "information", "informations", 
+    "infos", "actualité", "actualités", "news", "c'est quoi", "qu'est-ce que", 
+    "qui est", "où est", "comment", "pourquoi", "définition", "explique", 
+    "donne-moi", "montre-moi", "liste", "explorer", "consulter", "URL", "site"
+  ],
+  "triggers": [
+    "recherche", "rechercher", "cherche", "chercher", "trouve", "trouver", 
+    "web", "internet", "google", "duckduckgo", "information", "informations", 
+    "infos", "actualité", "actualités", "news", "c'est quoi", "qu'est-ce que", 
+    "qui est", "où est", "comment", "pourquoi", "définition", "explique", 
+    "donne-moi", "montre-moi", "liste", "explorer", "consulter", "URL", "site"
+  ]
 },
       "format_reponse": {
         "succes": true,
