@@ -24,7 +24,7 @@
 
             const words = rawQuery
                 .toLowerCase()
-                .replace(/[.,\/\/#!$%\^&\*;:{}=\-_`~()?"']/g, " ")
+                .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, " ")
                 .split(/\s+/);
 
             const filtered = words.filter(word => word.length > 2 && !stopWords.has(word));
@@ -35,7 +35,7 @@
         /* ==========================================================
             2. PROTOCOLE ROUTEUR + COMMUNICATION POSTMESSAGE
             ========================================================== */
-        const SEARCH_TIMEOUT_MS = 4500;
+        const SEARCH_TIMEOUT_MS = 6000;
 
         window.addEventListener('message', function(event) {
             const data = event.data;
@@ -85,62 +85,68 @@
             }, targetOrigin);
         }
 
-        function stripHtml(str) {
-            return (str || '').replace(/<[^>]*>/g, '');
-        }
-
         /* ==========================================================
-            3. EXTRACTION APPROFONDIE DES RÉSUMÉS DE PAGES
+            3. RECHERCHE WEB GÉNÉRALISTE MULTI-SOURCES (DuckDuckGo Lite)
             ========================================================== */
-        // Récupère l'introduction détaillée de chaque page via l'API REST Summary de Wikipedia
-        function fetchPageSummary(pageKey, signal) {
-            const url = `https://fr.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageKey)}`;
-            return fetch(url, { signal })
-                .then(res => {
-                    if (!res.ok) throw new Error('Erreur chargement résumé');
-                    return res.json();
-                })
-                .then(data => {
-                    return {
-                        title: data.title || pageKey,
-                        snippet: data.extract || "Informations textuelles générales extraites.",
-                        url: (data.content_urls && data.content_urls.desktop && data.content_urls.desktop.page) 
-                             ? data.content_urls.desktop.page 
-                             : `https://fr.wikipedia.org/wiki/${encodeURIComponent(pageKey)}`
-                    };
-                })
-                .catch(() => null);
-        }
-
-        // Étape 1 : Recherche les titres/clés de pages correspondants
-        function fetchAndEnrichArticles(query, signal) {
-            const searchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=3&format=json&origin=*`;
+        function fetchWebSearchResults(query, signal) {
+            const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
             
             return fetch(searchUrl, { signal })
                 .then(response => {
                     if (!response.ok) throw new Error('HTTP ' + response.status);
-                    return response.json();
+                    return response.text();
                 })
-                .then(data => {
-                    const searchResults = (data.query && data.query.search) || [];
-                    if (searchResults.length === 0) throw new Error('Aucun contenu');
+                .then(htmlText => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlText, 'text/html');
+                    const results = [];
                     
-                    // Étape 2 : Pour chaque résultat, va chercher le vrai résumé textuel complet en parallèle
-                    const summaryPromises = searchResults.map(item => fetchPageSummary(item.title, signal));
-                    return Promise.all(summaryPromises);
-                })
-                .then(results => {
-                    // Filtre les éventuels échecs de requêtes unitaires
-                    const validResults = results.filter(r => r !== null && r.snippet.length > 0);
-                    if (validResults.length === 0) throw new Error('Aucun résumé valide');
-                    return validResults;
+                    const resultElements = doc.querySelectorAll('.result');
+                    resultElements.forEach((el, index) => {
+                        if (index >= 5) return; // Limiter aux 5 premiers résultats pertinents
+                        
+                        const titleEl = el.querySelector('.result__title');
+                        const snippetEl = el.querySelector('.result__snippet');
+                        const linkEl = el.querySelector('.result__url');
+                        
+                        if (titleEl && snippetEl) {
+                            let title = titleEl.textContent.trim();
+                            let snippet = snippetEl.textContent.trim();
+                            let url = '#';
+                            
+                            // Extraction propre de l'URL réelle depuis DuckDuckGo Lite si présente
+                            if (linkEl) {
+                                url = linkEl.getAttribute('href') || linkEl.textContent.trim();
+                            } else {
+                                const aTag = titleEl.querySelector('a');
+                                if (aTag) url = aTag.getAttribute('href');
+                            }
+
+                            // Nettoyage des redirections si nécessaire
+                            if (url && url.includes('uddg=')) {
+                                try {
+                                    const match = url.match(/uddg=([^&]+)/);
+                                    if (match) url = decodeURIComponent(match[1]);
+                                } catch (e) {}
+                            }
+
+                            results.push({
+                                title: title,
+                                snippet: snippet,
+                                url: url
+                            });
+                        }
+                    });
+
+                    if (results.length === 0) throw new Error('Aucun résultat web valide trouvé');
+                    return results;
                 });
         }
 
-        const SEARCH_SOURCES = [fetchAndEnrichArticles];
+        const SEARCH_SOURCES = [fetchWebSearchResults];
 
         function executeSearch(cleanQuery, rawQuery, callback) {
-            setStatusIfReady('Extraction des textes et résumés en cours...');
+            setStatusIfReady('Exploration du web et analyse des sources en cours...');
 
             let hasResponded = false;
             const controller = new AbortController();
@@ -149,7 +155,7 @@
                 if (!hasResponded) {
                     hasResponded = true;
                     controller.abort();
-                    const defaultParagraph = `Voici ce que j'ai trouvé concernant "${rawQuery}" : l'analyse des données de référence permet de structurer un premier niveau d'information générale axé sur ce sujet.`;
+                    const defaultParagraph = `Voici ce que j'ai trouvé concernant "${rawQuery}" : l'analyse des données web disponibles permet de structurer un premier niveau d'information générale axé sur ce sujet.`;
                     setStatusIfReady('Contenu standard généré.');
                     callback([], defaultParagraph);
                 }
@@ -175,7 +181,7 @@
                     hasResponded = true;
                     clearTimeout(safetyTimeout);
 
-                    const fallbackParagraph = `Voici ce que j'ai trouvé pour "${rawQuery}" : les sources disponibles fournissent un aperçu synthétique global orienté vers les notions principales associées.`;
+                    const fallbackParagraph = `Voici ce que j'ai trouvé pour "${rawQuery}" : les sources web disponibles fournissent un aperçu synthétique global orienté vers les notions principales associées.`;
                     setStatusIfReady('Synthèse globale établie.');
                     callback([], fallbackParagraph);
                 });
@@ -186,7 +192,7 @@
             ========================================================== */
         function buildFluidParagraph(results, rawQuery) {
             if (!results || results.length === 0) {
-                return `Voici ce que j'ai trouvé concernant "${rawQuery}" : une vue d'ensemble structurée à partir des bases documentaires disponibles.`;
+                return `Voici ce que j'ai trouvé concernant "${rawQuery}" : une vue d'ensemble structurée à partir des pages web disponibles.`;
             }
 
             const validSnippets = results
@@ -194,10 +200,10 @@
                 .filter(text => text.length > 15);
 
             if (validSnippets.length === 0) {
-                return `Voici ce que j'ai trouvé au sujet de "${rawQuery}" : les éléments généraux recueillis permettent d'établir une base d'information cohérente.`;
+                return `Voici ce que j'ai trouvé au sujet de "${rawQuery}" : les éléments généraux recueillis sur le web permettent d'établir une base d'information cohérente.`;
             }
 
-            let joinedText = validSnippets.join(" ");
+            let joinedText = validSnippets.slice(0, 3).join(" ");
             if (!joinedText.endsWith('.')) {
                 joinedText += '.';
             }
@@ -367,7 +373,7 @@
 
             let sourcesHtml = '';
             if (results && results.length > 0) {
-                const links = results.map(r => `<li><a href="${r.url}" target="_blank">${r.title}</a> : <em>${r.snippet.substring(0, 90)}...</em></li>`).join('');
+                const links = results.map(r => `<li><a href="${r.url}" target="_blank" rel="noopener">${r.title}</a> : <em>${r.snippet.substring(0, 90)}...</em></li>`).join('');
                 sourcesHtml = `<div class="sources-list"><strong>Sources et extraits associés :</strong><ul style="margin: 8px 0 0 20px; padding:0; line-height: 1.4;">${links}</ul></div>`;
             }
 
