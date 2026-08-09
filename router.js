@@ -102,7 +102,7 @@ class Router {
       return { type: "service", service };
     }
 
-    const serviceConversation = this.registry.services.find((s) => s.id === "conversation");
+    const serviceConversation = this.registry.services.find((s) => s.id === "conversation-mini");
     if (serviceConversation) {
       this._log("CLASSIFICATION", { prompt, decision: "service", service: "conversation", raison: "repli_aucun_mot_cle" });
       return { type: "service", service: serviceConversation };
@@ -130,7 +130,8 @@ class Router {
         return { texte: prompt, longueur_max: 3 };
       case "horodateur":
         return { format: "long" };
-      case "conversation":
+      case "conversation-regles":
+      case "conversation-mini":
         return { texte: prompt };
       case "recherche":
       case "web-search":
