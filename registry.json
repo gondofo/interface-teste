@@ -8,7 +8,35 @@
   },
   "services": [
     {
-      "id": "aide",
+      "id": "generateur-uuid",
+      "nom": "Générateur d'identifiant unique (UUID)",
+      "fonction": "Génère un ou plusieurs identifiants uniques (UUID v4).",
+      "url": "./services/generateur-uuid.html",
+      "mots_cles": ["uuid", "identifiant unique", "génère un id", "génère un identifiant"],
+      "parametres_attendus": { "texte": "string (optionnel) — peut contenir la quantité souhaitée" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "compteur-texte",
+      "nom": "Compteur de texte",
+      "fonction": "Compte les caractères, mots et phrases d'un texte donné.",
+      "url": "./services/compteur-texte.html",
+      "mots_cles": ["compte les mots", "compte les caractères", "combien de mots", "combien de caractères", "statistiques du texte"],
+      "parametres_attendus": { "texte": "string (obligatoire) — le texte à analyser" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "encodeur-base64",
+      "nom": "Encodeur/décodeur Base64",
+      "fonction": "Encode ou décode du texte en Base64, localement.",
+      "url": "./services/encodeur-base64.html",
+      "mots_cles": ["base64", "encode en base64", "décode en base64", "décoder base64"],
+      "parametres_attendus": { "texte": "string (obligatoire) — le texte à encoder ou décoder" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
       "nom": "Aide (liste des capacités)",
       "fonction": "Liste dynamiquement, à partir du registre, tout ce que l'interface sait faire actuellement.",
       "url": "./modules/aide.html",
