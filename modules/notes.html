@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Notes</title></head>
+<body>
+<!--
+  Neurone "notes" — pense-bête local via localStorage (propre à ce
+  domaine GitHub Pages, persiste entre les sessions, jamais envoyé
+  nulle part).
+-->
+<script>
+(function () {
+  "use strict";
+
+  const CLE_STOCKAGE = "interface-teste-notes";
+
+  function lireNotes() {
+    try {
+      const brut = localStorage.getItem(CLE_STOCKAGE);
+      return brut ? JSON.parse(brut) : [];
+    } catch (erreur) {
+      return [];
+    }
+  }
+
+  function ecrireNotes(notes) {
+    try {
+      localStorage.setItem(CLE_STOCKAGE, JSON.stringify(notes));
+    } catch (erreur) {
+      console.error("[notes.html]", erreur);
+    }
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && payload.texte) || "").trim();
+    if (!texte) return { succes: false };
+    const texteNormalise = texte.toLowerCase();
+
+    if (/^(efface|supprime|vide)\s+(mes\s+)?notes/.test(texteNormalise)) {
+      ecrireNotes([]);
+      return { succes: true, texteRedige: "Toutes vos notes ont été effacées." };
+    }
+
+    if (/^(liste|montre|affiche)\s+(mes\s+)?notes|mes notes$/.test(texteNormalise)) {
+      const notes = lireNotes();
+      if (notes.length === 0) return { succes: true, texteRedige: "Vous n'avez aucune note enregistrée pour l'instant." };
+      const texteListe = notes.map((n, i) => (i + 1) + ". " + n).join("\n");
+      return { succes: true, texteRedige: "Vos notes (" + notes.length + ") :\n\n" + texteListe };
+    }
+
+    const ajoutMatch = texte.match(/^note\s*:\s*(.+)/i) || texte.match(/^ajoute une note\s*:\s*(.+)/i);
+    if (ajoutMatch) {
+      const notes = lireNotes();
+      notes.push(ajoutMatch[1].trim());
+      ecrireNotes(notes);
+      return { succes: true, texteRedige: "Note enregistrée (" + notes.length + " au total)." };
+    }
+
+    return {
+      succes: true,
+      texteRedige: "Pour utiliser ce neurone : \"note : votre texte\" pour ajouter, \"mes notes\" pour lister, " +
+        "\"efface mes notes\" pour tout effacer."
+    };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Générateur de mot de passe</title></head>
+<body>
+<!-- Neurone "generateur-mot-de-passe" — aléa cryptographique réel (crypto.getRandomValues). -->
+<script>
+(function () {
+  "use strict";
+
+  const JEU_CARACTERES = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*-_=+";
+
+  function genererMotDePasse(longueur) {
+    const octets = new Uint32Array(longueur);
+    crypto.getRandomValues(octets);
+    let resultat = "";
+    for (let i = 0; i < longueur; i++) {
+      resultat += JEU_CARACTERES[octets[i] % JEU_CARACTERES.length];
+    }
+    return resultat;
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && payload.texte) || "");
+    const match = texte.match(/(\d{1,3})/);
+    let longueur = match ? parseInt(match[1], 10) : 12;
+    longueur = Math.max(6, Math.min(64, longueur));
+
+    const motDePasse = genererMotDePasse(longueur);
+    return {
+      succes: true,
+      texteRedige: "Mot de passe généré (" + longueur + " caractères) :\n\n" + motDePasse
+    };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

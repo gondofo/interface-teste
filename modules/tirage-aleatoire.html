@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Tirage aléatoire</title></head>
+<body>
+<!-- Neurone "tirage-aleatoire" — pile ou face, dé, choix entre options, nombre aléatoire. -->
+<script>
+(function () {
+  "use strict";
+
+  function entierAleatoire(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && payload.texte) || "").trim();
+    const texteNormalise = texte.toLowerCase();
+    if (!texte) return { succes: false };
+
+    if (/pile ou face/.test(texteNormalise)) {
+      const resultat = Math.random() < 0.5 ? "Pile" : "Face";
+      return { succes: true, texteRedige: resultat + " !" };
+    }
+
+    const deMatch = texteNormalise.match(/dé\s*(?:à|de)?\s*(\d+)\s*faces?/);
+    if (deMatch) {
+      const faces = parseInt(deMatch[1], 10);
+      return { succes: true, texteRedige: "Résultat du dé à " + faces + " faces : " + entierAleatoire(1, faces) };
+    }
+    if (/lance (un |le )?dé\b/.test(texteNormalise)) {
+      return { succes: true, texteRedige: "Résultat du dé à 6 faces : " + entierAleatoire(1, 6) };
+    }
+
+    const plageMatch = texteNormalise.match(/entre\s+(-?\d+)\s+et\s+(-?\d+)/);
+    if (plageMatch) {
+      const a = parseInt(plageMatch[1], 10);
+      const b = parseInt(plageMatch[2], 10);
+      return { succes: true, texteRedige: "Nombre tiré : " + entierAleatoire(Math.min(a, b), Math.max(a, b)) };
+    }
+
+    const choixMatch = texte.match(/choisi[sr]?\s+entre\s+(.+)/i);
+    if (choixMatch) {
+      const options = choixMatch[1].split(/,| ou /i).map((o) => o.trim()).filter(Boolean);
+      if (options.length >= 2) {
+        const choisi = options[entierAleatoire(0, options.length - 1)];
+        return { succes: true, texteRedige: "Choix tiré au sort : " + choisi };
+      }
+    }
+
+    return { succes: true, texteRedige: "Nombre aléatoire : " + entierAleatoire(1, 100) };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

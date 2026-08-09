@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Convertisseur</title></head>
+<body>
+<!-- Neurone "convertisseur" — unités courantes, conversions fixes et exactes. -->
+<script>
+(function () {
+  "use strict";
+
+  const CONVERSIONS = [
+    { motifs: ["km en miles", "km en mile", "kilomètres en miles"], fn: (v) => v * 0.621371, unite: "miles" },
+    { motifs: ["miles en km", "mile en km", "miles en kilomètres"], fn: (v) => v / 0.621371, unite: "km" },
+    { motifs: ["kg en livres", "kg en lbs", "kilos en livres"], fn: (v) => v * 2.20462, unite: "livres" },
+    { motifs: ["livres en kg", "lbs en kg"], fn: (v) => v / 2.20462, unite: "kg" },
+    { motifs: ["celsius en fahrenheit", "°c en °f", "degrés en fahrenheit"], fn: (v) => v * 9/5 + 32, unite: "°F" },
+    { motifs: ["fahrenheit en celsius", "°f en °c"], fn: (v) => (v - 32) * 5/9, unite: "°C" },
+    { motifs: ["m en pieds", "mètres en pieds", "metres en pieds"], fn: (v) => v * 3.28084, unite: "pieds" },
+    { motifs: ["pieds en m", "pieds en mètres", "pieds en metres"], fn: (v) => v / 3.28084, unite: "m" },
+    { motifs: ["litres en gallons", "l en gallons"], fn: (v) => v * 0.264172, unite: "gallons" },
+    { motifs: ["gallons en litres", "gallons en l"], fn: (v) => v / 0.264172, unite: "litres" }
+  ];
+
+  const MESSAGE_INCONNU =
+    "Je ne reconnais pas cette conversion. Exemples pris en charge : \"10 km en miles\", " +
+    "\"5 kg en livres\", \"20 celsius en fahrenheit\", \"2 litres en gallons\".";
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && payload.texte) || "").trim();
+    if (!texte) return { succes: false };
+
+    const texteNormalise = texte.toLowerCase();
+    const nombreMatch = texteNormalise.match(/-?\d+(?:[.,]\d+)?/);
+    if (!nombreMatch) return { succes: true, texteRedige: MESSAGE_INCONNU };
+    const valeur = parseFloat(nombreMatch[0].replace(",", "."));
+
+    for (const conv of CONVERSIONS) {
+      if (conv.motifs.some((m) => texteNormalise.includes(m))) {
+        const resultat = Math.round(conv.fn(valeur) * 1000) / 1000;
+        return { succes: true, texteRedige: valeur + " → " + resultat + " " + conv.unite };
+      }
+    }
+    return { succes: true, texteRedige: MESSAGE_INCONNU };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

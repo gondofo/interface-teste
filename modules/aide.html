@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Aide</title></head>
+<body>
+<!--
+  Neurone "aide" — liste dynamiquement les capacités actuelles en lisant
+  registry.json. Toujours à jour automatiquement, sans jamais être
+  retouché à la main quand un neurone est ajouté/retiré.
+-->
+<script>
+(function () {
+  "use strict";
+
+  async function traiterRequete() {
+    try {
+      const reponse = await fetch("../registry.json", { cache: "no-store" });
+      if (!reponse.ok) throw new Error("HTTP " + reponse.status);
+      const registre = await reponse.json();
+      const services = registre.services || [];
+
+      if (services.length === 0) {
+        return { succes: true, texteRedige: "Aucun service n'est actuellement déclaré dans le registre." };
+      }
+
+      const lignes = services.map((s) => "• " + (s.nom || s.id) + " — " + (s.fonction || ""));
+      const texte =
+        "Voici ce que cette interface sait faire actuellement (" + services.length + " service(s)) :\n\n" +
+        lignes.join("\n");
+
+      return { succes: true, texteRedige: texte };
+    } catch (erreur) {
+      console.error("[aide.html]", erreur);
+      return { succes: true, texteRedige: "Je n'ai pas pu lire la liste des services disponibles pour le moment." };
+    }
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    traiterRequete().then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
