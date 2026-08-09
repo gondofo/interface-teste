@@ -1,39 +1,30 @@
 /**
  * ==========================================================================
- *  ROUTER.JS — Cœur du système de routage de l'Interface Mère
+ *  ROUTER.JS — Orchestrateur symbolique de l'Interface Mère
  * ==========================================================================
- *
- *  Responsabilités :
- *   1. Charger et parser le Registre (registry.json).
- *   2. Analyser la requête utilisateur pour déterminer quel(s) micro-service(s)
- *      sont pertinents (matching par mots-clés) — et détecter les messages
- *      de discussion libre / code / raisonnement pour éviter un appel
- *      réseau inutile au module de recherche.
- *   3. Orchestrer l'appel asynchrone au micro-service choisi via le protocole
- *      iframe + postMessage (fonctionne cross-origin, sans backend).
- *   4. Journaliser (logger) chaque étape du flux et injecter proprement le HTML.
+ *  Aucun LLM, aucune IA générative : uniquement des règles, des scores de
+ *  correspondance, une mémoire locale d'associations apprises, et un
+ *  principe strict — ne jamais prétendre qu'une capacité existe si elle
+ *  n'existe pas.
  * ==========================================================================
  */
 
 class Router {
-  constructor({ registryUrl = "./registry.json", onLog = () => {} } = {}) {
+  constructor({ registryUrl = "./registry.json", memoireCle = "orchestrateur-memoire", onLog = () => {} } = {}) {
     this.registryUrl = registryUrl;
-    this.registry = null;             // Contenu chargé du registre
-    this.onLog = onLog;               // Callback UI pour afficher la trace en direct
-    this.journal = [];                // Historique local complet (traçabilité)
+    this.registry = null;
+    this.onLog = onLog;
+    this.journal = [];
+    this.memoireCle = memoireCle;
+    this.memoire = this._chargerMemoire();
   }
 
-  /**
-   * Charge le registre centralisé depuis registry.json.
-   * Doit être appelé une fois avant toute résolution de requête.
-   */
+  // ========================================================================
+  // Chargement du registre (source de vérité unique — point 9)
+  // ========================================================================
   async chargerRegistre() {
     const t0 = performance.now();
     try {
-      // Paramètre anti-cache : évite qu'un cache réseau intermédiaire
-      // (GitHub Pages / CDN) ne serve une version périmée du registre
-      // après une mise à jour — "cache: no-store" seul ne suffit pas,
-      // il ne contrôle que le cache local du navigateur.
       const urlSansCache = this.registryUrl + (this.registryUrl.includes("?") ? "&" : "?") + "t=" + Date.now();
       const res = await fetch(urlSansCache, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -50,12 +41,10 @@ class Router {
     }
   }
 
-  /**
-   * Distance de Levenshtein — nombre minimal de modifications (ajout,
-   * suppression, substitution) pour passer d'un mot à l'autre. Sert à la
-   * tolérance aux fautes de frappe : ce n'est PAS de la compréhension du
-   * langage, juste un rapprochement orthographique entre mots proches.
-   */
+  // ========================================================================
+  // 1. FUZZY MATCHING — fautes de frappe, variantes, score de correspondance
+  // ========================================================================
+
   _distanceLevenshtein(a, b) {
     const m = a.length, n = b.length;
     const d = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
@@ -71,97 +60,225 @@ class Router {
   }
 
   /**
-   * Un mot du message "correspond" à un mot d'un mot-clé si identique, ou
-   * si sa distance de Levenshtein est faible relativement à sa longueur
-   * (tolère 1 faute sur un mot court, 2 sur un mot plus long).
+   * Radical très approximatif d'un mot français : retire les terminaisons
+   * verbales/plurielles les plus courantes, uniquement pour rapprocher des
+   * variantes d'un même mot ("calcule"/"calculer"/"calculons"). Ce n'est
+   * pas un vrai lemmatiseur linguistique — juste une heuristique légère.
    */
+  _radical(mot) {
+    return mot.replace(/(ons|ez|ent|er|és|ée|ées|és|e|s)$/i, "").toLowerCase();
+  }
+
   _motsProches(motMessage, motCle) {
     if (motMessage === motCle) return true;
+    if (this._radical(motMessage) === this._radical(motCle) && this._radical(motCle).length >= 3) return true;
     if (Math.abs(motMessage.length - motCle.length) > 2) return false;
     const tolerance = motCle.length <= 4 ? 1 : motCle.length <= 8 ? 2 : 3;
     return this._distanceLevenshtein(motMessage, motCle) <= tolerance;
   }
 
   /**
-   * Analyse le prompt utilisateur et sélectionne le micro-service le plus
-   * pertinent en comparant les mots-clés du registre au texte de la requête.
-   * Un match exact (substring) vaut 1 point ; un match approximatif
-   * (faute de frappe tolérée) vaut 0.5 point, pour privilégier les vraies
-   * correspondances en cas d'ambiguïté.
+   * Évalue TOUS les services du registre face à la requête (pas seulement
+   * le meilleur) et renvoie une liste triée par score, chacun avec un
+   * niveau de confiance honnête plutôt qu'un simple score brut.
    */
-  selectionnerService(prompt) {
+  evaluerCandidats(prompt) {
     if (!this.registry) throw new Error("Registre non chargé. Appeler chargerRegistre() d'abord.");
 
     const texteNormalise = prompt.toLowerCase();
     const motsMessage = texteNormalise.match(/[a-zàâçéèêëîïôûùüÿñæœ']+/g) || [];
-    let meilleurScore = 0;
-    let meilleurService = null;
 
-    for (const service of this.registry.services) {
+    const candidats = this.registry.services.map((service) => {
       let score = 0;
+      let matchExactTrouve = false;
+      let matchApproxTrouve = false;
+
       for (const motCle of service.mots_cles) {
         const motCleNormalise = motCle.toLowerCase();
         if (texteNormalise.includes(motCleNormalise)) {
           score += 1;
+          matchExactTrouve = true;
           continue;
         }
-        // Repli flou : uniquement pour les mots-clés d'un seul mot,
-        // pour éviter les faux positifs sur des expressions longues.
         if (!motCleNormalise.includes(" ") && motCleNormalise.length >= 3) {
           const approx = motsMessage.some((m) => this._motsProches(m, motCleNormalise));
-          if (approx) score += 0.5;
+          if (approx) { score += 0.5; matchApproxTrouve = true; }
         }
       }
-      if (score > meilleurScore) {
-        meilleurScore = score;
-        meilleurService = service;
-      }
-    }
 
-    this._log("SELECTION", {
-      prompt,
-      service_choisi: meilleurService ? meilleurService.id : null,
-      score: meilleurScore,
+      const confiance = matchExactTrouve ? "élevée" : matchApproxTrouve ? "moyenne" : "aucune";
+      return { service, score, confiance };
     });
 
-    return meilleurService;
+    return candidats.filter((c) => c.score > 0).sort((a, b) => b.score - a.score);
   }
 
-  /**
-   * Sélectionne le service le plus pertinent — y compris, désormais, le
-   * service "conversation" qui participe au même scoring par mots-clés
-   * que les autres (calcul, traduction, résumé, date, recherche web).
-   * Un message comme "bonjour" ou "écris-moi une fonction Python" obtient
-   * un meilleur score côté "conversation" que côté "web-search", et sera
-   * donc routé vers le neurone de conversation locale plutôt que vers une
-   * recherche inutile.
-   *
-   * Si aucun service n'obtient le moindre point (aucun mot-clé reconnu du
-   * tout), on tente quand même le neurone "conversation" en dernier
-   * recours plutôt que d'afficher un message interne statique.
-   */
+  // ========================================================================
+  // 2. ANALYSE STRUCTURÉE DE LA REQUÊTE
+  // ========================================================================
+
+  analyserRequete(prompt) {
+    const texte = prompt.trim();
+    const nombres = (texte.match(/-?\d+(?:[.,]\d+)?/g) || []).map((n) => parseFloat(n.replace(",", ".")));
+    const guillemets = (texte.match(/"([^"]+)"|«([^»]+)»/g) || []);
+    const motsSignificatifs = (texte.toLowerCase().match(/[a-zàâçéèêëîïôûùüÿñæœ']{3,}/g) || []);
+
+    return {
+      texteOriginal: texte,
+      motsSignificatifs,
+      parametresDetectes: { nombres, expressionsCitees: guillemets },
+      longueur: texte.length
+    };
+  }
+
+  // ========================================================================
+  // 4. MÉMOIRE — associations apprises, jamais de modification du code
+  // ========================================================================
+
+  _chargerMemoire() {
+    try {
+      const brut = localStorage.getItem(this.memoireCle);
+      return brut ? JSON.parse(brut) : {};
+    } catch (erreur) {
+      return {};
+    }
+  }
+
+  _sauvegarderMemoire() {
+    try {
+      localStorage.setItem(this.memoireCle, JSON.stringify(this.memoire));
+    } catch (erreur) {
+      // Stockage indisponible (mode privé, quota...) : on continue sans mémoire persistante.
+    }
+  }
+
+  _normaliserPourMemoire(texte) {
+    return texte.trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  rechercherMemoire(prompt) {
+    const cle = this._normaliserPourMemoire(prompt);
+    const entree = this.memoire[cle];
+    if (!entree) return null;
+    const service = this.registry.services.find((s) => s.id === entree.serviceId);
+    if (!service) return null; // le neurone mémorisé a été retiré depuis
+    return { service, occurrences: entree.occurrences };
+  }
+
+  enregistrerAssociation(prompt, serviceId) {
+    const cle = this._normaliserPourMemoire(prompt);
+    const existant = this.memoire[cle];
+    this.memoire[cle] = {
+      serviceId,
+      occurrences: existant ? existant.occurrences + 1 : 1,
+      derniereFois: new Date().toISOString()
+    };
+    this._sauvegarderMemoire();
+  }
+
+  /** Commande d'enseignement explicite : "mémorise : <phrase> = <id ou nom du service>" */
+  traiterCommandeEnseignement(prompt) {
+    const match = prompt.match(/^m[ée]morise\s*(?:que)?\s*:?\s*"?(.+?)"?\s*(?:doit utiliser|=|->|utilise)\s*(.+)$/i);
+    if (!match) return null;
+
+    const phrase = match[1].trim();
+    const cibleTexte = match[2].trim().toLowerCase();
+    const service = this.registry.services.find(
+      (s) => s.id.toLowerCase() === cibleTexte || (s.nom || "").toLowerCase().includes(cibleTexte)
+    );
+
+    if (!service) {
+      return {
+        succes: true,
+        interne: true,
+        reponse: `<p>Je ne trouve aucun neurone correspondant à "${this._echapper(cibleTexte)}" dans le registre — rien n'a été mémorisé.</p>`
+      };
+    }
+
+    this.enregistrerAssociation(phrase, service.id);
+    return {
+      succes: true,
+      interne: true,
+      reponse: `<p>Association mémorisée : la phrase "${this._echapper(phrase)}" utilisera désormais le neurone <strong>${this._echapper(service.nom || service.id)}</strong>.</p>`
+    };
+  }
+
+  traiterCommandeOubli(prompt) {
+    if (/^efface (la |ta )?m[ée]moire$/i.test(prompt.trim())) {
+      this.memoire = {};
+      this._sauvegarderMemoire();
+      return { succes: true, interne: true, reponse: "<p>Toute la mémoire d'associations apprises a été effacée.</p>" };
+    }
+    const match = prompt.match(/^oublie\s*:?\s*"?(.+?)"?$/i);
+    if (match) {
+      const cle = this._normaliserPourMemoire(match[1]);
+      if (this.memoire[cle]) {
+        delete this.memoire[cle];
+        this._sauvegarderMemoire();
+        return { succes: true, interne: true, reponse: `<p>Association oubliée pour "${this._echapper(match[1].trim())}".</p>` };
+      }
+      return { succes: true, interne: true, reponse: `<p>Aucune association mémorisée ne correspond à "${this._echapper(match[1].trim())}".</p>` };
+    }
+    return null;
+  }
+
+  _echapper(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ========================================================================
+  // 3. ORCHESTRATEUR — décision avec score de confiance (point 5),
+  //    gestion de l'incertitude (point 6) et des capacités manquantes (point 7)
+  // ========================================================================
+
   classifierRequete(prompt) {
-    const service = this.selectionnerService(prompt);
+    // Commandes d'enseignement/oubli traitées en priorité, avant toute classification
+    const enseignement = this.traiterCommandeEnseignement(prompt);
+    if (enseignement) return { type: "reponse_directe", reponse: enseignement };
+    const oubli = this.traiterCommandeOubli(prompt);
+    if (oubli) return { type: "reponse_directe", reponse: oubli };
 
-    if (service) {
-      this._log("CLASSIFICATION", { prompt, decision: "service", service: service.id });
-      return { type: "service", service };
+    // 1) Mémoire d'associations déjà confirmées
+    const souvenir = this.rechercherMemoire(prompt);
+    if (souvenir) {
+      this._log("CLASSIFICATION", {
+        prompt, decision: "service", service: souvenir.service.id,
+        confiance: "mémorisée", occurrences: souvenir.occurrences
+      });
+      return { type: "service", service: souvenir.service, confiance: "mémorisée" };
     }
 
-    const serviceConversation = this.registry.services.find((s) => s.id === "conversation-mini");
-    if (serviceConversation) {
-      this._log("CLASSIFICATION", { prompt, decision: "service", service: "conversation", raison: "repli_aucun_mot_cle" });
-      return { type: "service", service: serviceConversation };
+    // 2) Évaluation par score sur tous les candidats
+    const candidats = this.evaluerCandidats(prompt);
+
+    if (candidats.length === 0) {
+      const analyse = this.analyserRequete(prompt);
+      this._log("CLASSIFICATION", { prompt, decision: "capacite_manquante", mots: analyse.motsSignificatifs });
+      return { type: "capacite_manquante", motsDetectes: analyse.motsSignificatifs };
     }
 
-    this._log("CLASSIFICATION", { prompt, decision: "interne", raison: "aucun_service" });
-    return { type: "interne", raison: "aucun_service" };
+    const meilleur = candidats[0];
+    const deuxieme = candidats[1];
+
+    // Ambiguïté : deux candidats à score très proche → incertitude assumée plutôt qu'un choix arbitraire
+    if (deuxieme && meilleur.score - deuxieme.score < 0.5 && meilleur.confiance !== "élevée") {
+      this._log("CLASSIFICATION", {
+        prompt, decision: "incertain",
+        candidats: [meilleur.service.id, deuxieme.service.id]
+      });
+      return { type: "incertain", candidats: [meilleur, deuxieme] };
+    }
+
+    this._log("CLASSIFICATION", { prompt, decision: "service", service: meilleur.service.id, confiance: meilleur.confiance });
+    return { type: "service", service: meilleur.service, confiance: meilleur.confiance };
   }
 
-  /**
-   * Construit la charge utile (payload) attendue par le micro-service à
-   * partir du prompt brut.
-   */
+  // ========================================================================
+  // Construction du payload et appel du neurone (inchangé dans le principe)
+  // ========================================================================
+
   construirePayload(service, prompt) {
     switch (service.id) {
       case "calculatrice": {
@@ -176,24 +293,13 @@ class Router {
         return { texte: prompt, longueur_max: 3 };
       case "horodateur":
         return { format: "long" };
-      case "conversation-regles":
-      case "conversation-mini":
-        return { texte: prompt };
-      case "recherche":
-      case "web-search":
-      case "sage-html":
-        return { query: prompt };
       default:
-        return { texte: prompt };
+        return { texte: prompt, query: prompt };
     }
   }
 
-  /**
-   * Appelle un micro-service distant via iframe + postMessage,
-   * filtre le JSON brut et construit les cartes ou le texte par défaut sans blocage.
-   */
   appelerService(service, payload) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
       const t0 = performance.now();
 
@@ -218,18 +324,11 @@ class Router {
         const duree = Math.round(performance.now() - t0);
         nettoyer();
 
-        this._log("APPEL_TERMINE", {
-          service: service.id,
-          requestId,
-          duree_ms: duree,
-          succes: !!data.result?.succes,
-        });
+        this._log("APPEL_TERMINE", { service: service.id, requestId, duree_ms: duree, succes: !!data.result?.succes });
 
         const resultatBrut = data.result || {};
-
         let contenuUI = resultatBrut.reponse || "";
 
-        // Construction des cartes d'affichage en blocs blancs si le tableau resultats existe
         if (!contenuUI && resultatBrut.resultats && Array.isArray(resultatBrut.resultats)) {
           let html = "<div style='display:flex; flex-direction:column; gap:10px;'>";
           resultatBrut.resultats.forEach(r => {
@@ -242,18 +341,12 @@ class Router {
           contenuUI = html;
         }
 
-        // Remplacement de la vérification bloquante par un affichage neutre par défaut
         if (!contenuUI) {
           const texteBrut = resultatBrut.texte || resultatBrut.expression || JSON.stringify(resultatBrut);
           contenuUI = `<p style="margin:0; color:#1A1A1A; line-height:1.5;">${texteBrut || "Réception des données effectuée avec succès."}</p>`;
         }
 
-        resolve({
-          ...resultatBrut,
-          reponse: contenuUI,
-          _duree_ms: duree,
-          _service: service.id
-        });
+        resolve({ ...resultatBrut, reponse: contenuUI, _duree_ms: duree, _service: service.id });
       };
 
       const minuteur = setTimeout(() => {
@@ -268,10 +361,7 @@ class Router {
       }, service.timeout_ms || 5000);
 
       iframe.onload = () => {
-        iframe.contentWindow.postMessage(
-          { type: "MS_REQUEST", requestId, payload },
-          "*"
-        );
+        iframe.contentWindow.postMessage({ type: "MS_REQUEST", requestId, payload }, "*");
         this._log("APPEL_ENVOYE", { service: service.id, requestId, url: service.url, payload });
       };
 
@@ -280,39 +370,62 @@ class Router {
     });
   }
 
-  /**
-   * Point d'entrée principal : classifie la requête (service déterministe,
-   * recherche factuelle, ou discussion libre traitée en interne), puis
-   * route et injecte directement le HTML filtré via innerHTML si un
-   * conteneur est fourni.
-   */
+  // ========================================================================
+  // Point d'entrée principal
+  // ========================================================================
+
   async router(prompt, containerElement = null) {
     this._log("REQUETE_RECUE", { prompt });
-
     if (!this.registry) await this.chargerRegistre();
 
     const classification = this.classifierRequete(prompt);
 
-    if (classification.type === "interne") {
+    if (classification.type === "reponse_directe") {
+      if (containerElement) containerElement.innerHTML = classification.reponse.reponse;
+      return classification.reponse;
+    }
+
+    if (classification.type === "capacite_manquante") {
+      const motsTexte = classification.motsDetectes.length > 0
+        ? classification.motsDetectes.join(", ")
+        : "(aucun mot significatif identifié)";
       const reponseInterne = {
         succes: true,
         interne: true,
         reponse:
-          "<p><strong>Capacité manquante</strong> : aucun neurone du registre ne semble correspondre à cette " +
-          "demande (recherche par mots-clés, aucune correspondance suffisante).</p>" +
-          "<p>Ce diagnostic reste approximatif — il repose sur des mots-clés, pas sur une vraie compréhension " +
-          "de la phrase. Si un neurone existe mais n'a pas été reconnu, essayez de reformuler avec des mots " +
-          "plus proches de sa fonction (ex: \"calcule\", \"traduis\", \"résume\").</p>"
+          `<p><strong>Capacité manquante</strong> : aucun neurone du registre ne correspond, même approximativement, à cette demande.</p>` +
+          `<p>Mots significatifs identifiés : ${this._echapper(motsTexte)}.</p>` +
+          `<p>Ce diagnostic reste fondé sur des règles, pas sur une vraie compréhension — si un neurone existe déjà pour ce besoin, ` +
+          `essayez de reformuler avec un mot plus proche de sa fonction déclarée. Sinon, un nouveau neurone devra être créé et enregistré ` +
+          `dans le registre pour combler ce manque.</p>`
       };
       if (containerElement) containerElement.innerHTML = reponseInterne.reponse;
       return reponseInterne;
     }
 
+    if (classification.type === "incertain") {
+      const [a, b] = classification.candidats;
+      const reponseIncertaine = {
+        succes: true,
+        interne: true,
+        reponse:
+          `<p><strong>Incertain</strong> : cette demande pourrait correspondre à plusieurs neurones sans qu'un seul se ` +
+          `distingue clairement — <em>${this._echapper(a.service.nom || a.service.id)}</em> ou <em>${this._echapper(b.service.nom || b.service.id)}</em>.</p>` +
+          `<p>Plutôt que de choisir au hasard, précisez votre demande pour lever l'ambiguïté.</p>`
+      };
+      if (containerElement) containerElement.innerHTML = reponseIncertaine.reponse;
+      return reponseIncertaine;
+    }
+
+    // type === "service"
     const service = classification.service;
     const payload = this.construirePayload(service, prompt);
 
     try {
       const resultat = await this.appelerService(service, payload);
+      if (resultat && resultat.succes !== false) {
+        this.enregistrerAssociation(prompt, service.id);
+      }
       if (containerElement && resultat.reponse) {
         containerElement.innerHTML = resultat.reponse;
       }
@@ -323,28 +436,17 @@ class Router {
         reponse: `<p style='color:#1A1A1A; margin:0;'>Données traitées par défaut.</p>`,
         _service: service.id
       };
-      if (containerElement) {
-        containerElement.innerHTML = errRes.reponse;
-      }
+      if (containerElement) containerElement.innerHTML = errRes.reponse;
       return errRes;
     }
   }
 
-  /**
-   * Journalisation interne : ajoute une entrée horodatée au journal local
-   * et notifie l'UI via le callback onLog.
-   */
   _log(evenement, details) {
-    const entree = {
-      horodatage: new Date().toISOString(),
-      evenement,
-      details,
-    };
+    const entree = { horodatage: new Date().toISOString(), evenement, details };
     this.journal.push(entree);
     this.onLog(entree);
   }
 
-  /** Retourne l'historique complet des événements tracés. */
   getJournal() {
     return this.journal;
   }
