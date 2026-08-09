@@ -49,9 +49,25 @@
   async function obtenirGenerateur() {
     if (!generateurPromise) {
       generateurPromise = (async () => {
+        console.log("[conversation.html] import de la bibliothèque…");
         const { pipeline, env } = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0");
+        console.log("[conversation.html] bibliothèque importée, création du pipeline…");
         env.allowLocalModels = false;
-        return pipeline("text-generation", "onnx-community/Qwen2.5-0.5B-Instruct", { dtype: "q4" });
+        const gen = await pipeline("text-generation", "onnx-community/Qwen2.5-0.5B-Instruct", {
+          dtype: "q4",
+          progress_callback: (info) => {
+            if (info && info.status === "progress") {
+              console.log(
+                "[conversation.html] téléchargement " + (info.file || "") + " : " +
+                Math.round(info.progress || 0) + "%"
+              );
+            } else if (info && info.status) {
+              console.log("[conversation.html] étape : " + info.status + (info.file ? " (" + info.file + ")" : ""));
+            }
+          }
+        });
+        console.log("[conversation.html] pipeline prêt.");
+        return gen;
       })();
     }
     return generateurPromise;
