@@ -27,7 +27,7 @@
         "succes": true,
         "texteRedige": "string"
       },
-      "timeout_ms": 60000
+      "timeout_ms": 170000
     },
     {
       "id": "resume-texte",
