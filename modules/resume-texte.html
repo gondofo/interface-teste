@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Résumeur</title></head>
+<body>
+<!--
+  Neurone "resume-texte" — résumé extractif (pas de rédaction par IA) :
+  sélectionne les phrases existantes les plus représentatives du texte,
+  selon la fréquence des mots significatifs qu'elles contiennent.
+-->
+<script>
+(function () {
+  "use strict";
+
+  const MOTS_VIDES = new Set([
+    "le","la","les","un","une","des","de","du","et","est","en","à","au","aux",
+    "ce","ces","cette","que","qui","dans","pour","par","sur","avec","sans",
+    "ou","où","mais","donc","or","ni","car","je","tu","il","elle","nous",
+    "vous","ils","elles","son","sa","ses","leur","leurs","se","sa","ne",
+    "pas","plus","été","être","avoir","fait","faire","comme","cela","ça"
+  ]);
+
+  function decouperEnPhrases(texte) {
+    return (texte || "")
+      .replace(/\s+/g, " ")
+      .split(/(?<=[.!?])\s+/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+  }
+
+  function resumer(texte, longueurMax) {
+    const phrases = decouperEnPhrases(texte);
+    if (phrases.length <= longueurMax) return { resume: phrases.join(" "), analysees: phrases.length };
+
+    // Fréquence des mots significatifs (hors mots vides) dans tout le texte
+    const frequences = {};
+    phrases.forEach((phrase) => {
+      const mots = phrase.toLowerCase().match(/[a-zàâçéèêëîïôûùüÿñæœ']+/g) || [];
+      mots.forEach((mot) => {
+        if (MOTS_VIDES.has(mot) || mot.length < 3) return;
+        frequences[mot] = (frequences[mot] || 0) + 1;
+      });
+    });
+
+    // Score de chaque phrase = somme des fréquences de ses mots significatifs
+    const scores = phrases.map((phrase, index) => {
+      const mots = phrase.toLowerCase().match(/[a-zàâçéèêëîïôûùüÿñæœ']+/g) || [];
+      const score = mots.reduce((s, m) => s + (frequences[m] || 0), 0);
+      return { index, phrase, score };
+    });
+
+    const meilleures = scores
+      .slice()
+      .sort((a, b) => b.score - a.score)
+      .slice(0, longueurMax)
+      .sort((a, b) => a.index - b.index); // remet dans l'ordre d'origine
+
+    return { resume: meilleures.map((p) => p.phrase).join(" "), analysees: phrases.length };
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && payload.texte) || "").trim();
+    const longueurMax = (payload && Number(payload.longueur_max)) || 3;
+    if (!texte) return { succes: false };
+
+    const { resume, analysees } = resumer(texte, Math.max(1, longueurMax));
+    return {
+      succes: true,
+      resume: resume,
+      phrases_analysees: analysees,
+      texteRedige: resume
+    };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
