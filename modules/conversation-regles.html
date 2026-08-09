@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Neurone — Conversation par règles</title>
+</head>
+<body>
+<!--
+  Neurone "conversation-regles" — dictionnaire de réponses toutes faites.
+  Aucun calcul lourd, aucun modèle : reconnaissance de motifs simples,
+  comme le neurone "traducteur" prévu dans le registre. 100% local,
+  instantané, fonctionne sur n'importe quel appareil.
+-->
+<script>
+(function () {
+  "use strict";
+
+  // Chaque entrée : motifs à repérer (inclusion, insensible à la casse) et
+  // réponse associée. La première entrée qui matche l'emporte.
+  const REGLES = [
+    {
+      motifs: ["bonjour", "salut", "coucou", "bonsoir"],
+      reponse: "Bonjour ! Je suis un module de réponses toutes faites — je reconnais des phrases courantes plutôt que de vraiment comprendre. Comment puis-je vous aider ?"
+    },
+    {
+      motifs: ["merci"],
+      reponse: "Avec plaisir !"
+    },
+    {
+      motifs: ["comment vas-tu", "comment ça va", "ça va ?", "ça va?"],
+      reponse: "Je n'ai pas d'état à proprement parler — je suis un simple dictionnaire de réponses — mais tout fonctionne bien de mon côté. Que puis-je faire pour vous ?"
+    },
+    {
+      motifs: ["qui es-tu", "qui êtes-vous", "c'est quoi ce module", "tu es quoi"],
+      reponse: "Je suis un neurone de réponses par règles : je reconnais un nombre limité de phrases courantes et je réponds avec un texte préécrit. Aucun modèle de langage ne tourne ici — pour des questions plus ouvertes, un autre neurone (modèle miniature) peut prendre le relais."
+    },
+    {
+      motifs: ["raconte une blague", "raconte-moi une blague", "dis une blague", "blague"],
+      reponse: "Pourquoi les développeurs confondent-ils toujours Halloween et Noël ? Parce que OCT 31 == DEC 25."
+    },
+    {
+      motifs: ["hello world python", "python hello world"],
+      reponse: "Voici un \"Hello World\" en Python :\n\nprint(\"Hello, World!\")"
+    },
+    {
+      motifs: ["hello world javascript", "javascript hello world"],
+      reponse: "Voici un \"Hello World\" en JavaScript :\n\nconsole.log(\"Hello, World!\");"
+    },
+    {
+      motifs: ["hello world"],
+      reponse: "Un classique ! En Python : print(\"Hello, World!\") — en JavaScript : console.log(\"Hello, World!\");"
+    },
+    {
+      motifs: ["au revoir", "à bientôt", "bye"],
+      reponse: "À bientôt !"
+    }
+  ];
+
+  const MESSAGE_AUCUNE_REGLE =
+    "Je suis un module de réponses toutes faites : je ne reconnais qu'un nombre limité de phrases " +
+    "courantes, et celle-ci n'en fait pas partie. Pour une question plus ouverte, un autre neurone " +
+    "(modèle miniature) peut être mieux placé pour répondre.";
+
+  function trouverReponse(texte) {
+    const texteNormalise = (texte || "").toLowerCase();
+    for (const regle of REGLES) {
+      for (const motif of regle.motifs) {
+        if (texteNormalise.includes(motif)) return regle.reponse;
+      }
+    }
+    return null;
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim();
+    if (!texte) return { succes: false };
+
+    const reponse = trouverReponse(texte);
+    return { succes: true, texteRedige: reponse || MESSAGE_AUCUNE_REGLE };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
