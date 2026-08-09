@@ -191,6 +191,29 @@
     border-color: var(--accent-dim);
   }
 
+  /* Pistes suggérées cliquables (échec de recherche) */
+  .suggestions-conteneur{
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .suggestion-piste{
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--accent);
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .suggestion-piste:hover{ background: var(--line); border-color: var(--accent-dim); }
+  .suggestion-piste:active{ transform: scale(.97); }
+
   /* Points de suspension "en train d'écrire" */
   .points-attente{ display:inline-flex; gap:3px; }
   .points-attente span{
@@ -417,9 +440,40 @@
       }
     });
 
+    // Clic sur une piste suggérée (échec de recherche) : relance
+    // automatiquement une recherche sur le sujet proposé.
+    filInt.addEventListener('click', (e) => {
+      const bouton = e.target.closest('.suggestion-piste');
+      if (!bouton) return;
+      const sujet = bouton.dataset.sujet || '';
+      if (!sujet) return;
+      champ.value = `recherche sur ${sujet}`;
+      form.requestSubmit();
+    });
+
     /** Formate proprement la réponse de l'assistant avec paragraphes aérés et sources discrètes en bas */
     function formaterReponseAssistant(resultat) {
-      if (!resultat || resultat.succes === false) {
+      if (!resultat) {
+        return { html: `<p>Je n'ai pas pu aboutir à une réponse satisfaisante pour cette requête.</p>` };
+      }
+
+      if (resultat.succes === false) {
+        // Repli sur des pistes cliquables si le micro-service en propose,
+        // plutôt qu'un message d'échec sec.
+        const suggestions = Array.isArray(resultat.suggestions)
+          ? resultat.suggestions.filter(s => s && s.title && s.url)
+          : [];
+
+        if (suggestions.length > 0) {
+          const puces = suggestions
+            .map(s => `<button type="button" class="suggestion-piste" data-sujet="${echapperHTML(s.title)}">${echapperHTML(s.title)}</button>`)
+            .join('');
+          return {
+            html: `<p>Aucun résultat exact pour cette recherche. Voulez-vous explorer une de ces pistes ?</p>`
+              + `<div class="suggestions-conteneur">${puces}</div>`
+          };
+        }
+
         return { html: `<p>Je n'ai pas pu aboutir à une réponse satisfaisante pour cette requête.</p>` };
       }
 
@@ -456,7 +510,7 @@
           .filter(r => r.url && r.title)
           .map(r => `<li><a href="${echapperHTML(r.url)}" target="_blank" rel="noopener">${echapperHTML(r.title)}</a></li>`)
           .join('');
-        
+
         if (liens) {
           sourcesHtml = `
             <div class="sources-conteneur">
@@ -475,6 +529,6 @@
       div.textContent = str;
       return div.innerHTML;
     }
-    <script src="secure-storage.js"></script>
+  </script>
 </body>
 </html>
