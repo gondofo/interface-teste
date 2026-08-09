@@ -30,11 +30,17 @@ class Router {
   async chargerRegistre() {
     const t0 = performance.now();
     try {
-      const res = await fetch(this.registryUrl, { cache: "no-store" });
+      // Paramètre anti-cache : évite qu'un cache réseau intermédiaire
+      // (GitHub Pages / CDN) ne serve une version périmée du registre
+      // après une mise à jour — "cache: no-store" seul ne suffit pas,
+      // il ne contrôle que le cache local du navigateur.
+      const urlSansCache = this.registryUrl + (this.registryUrl.includes("?") ? "&" : "?") + "t=" + Date.now();
+      const res = await fetch(urlSansCache, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       this.registry = await res.json();
       this._log("REGISTRE_CHARGE", {
         nb_services: this.registry.services.length,
+        services: this.registry.services.map((s) => s.id),
         duree_ms: Math.round(performance.now() - t0),
       });
       return this.registry;
@@ -147,7 +153,7 @@ class Router {
       const iframe = document.createElement("iframe");
       iframe.style.display = "none";
       iframe.setAttribute("aria-hidden", "true");
-      iframe.src = service.url;
+      iframe.src = service.url + (service.url.includes("?") ? "&" : "?") + "t=" + Date.now();
 
       let termine = false;
 
