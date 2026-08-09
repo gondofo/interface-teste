@@ -8,6 +8,60 @@
   },
   "services": [
     {
+      "id": "aide",
+      "nom": "Aide (liste des capacités)",
+      "fonction": "Liste dynamiquement, à partir du registre, tout ce que l'interface sait faire actuellement.",
+      "url": "./modules/aide.html",
+      "mots_cles": [
+        "aide générale", "que peux-tu faire", "quelles sont tes capacités",
+        "liste des commandes", "commandes disponibles", "quels modules",
+        "que sais-tu faire", "aide système", "capacités disponibles"
+      ],
+      "parametres_attendus": {},
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "convertisseur",
+      "nom": "Convertisseur d'unités",
+      "fonction": "Convertit entre unités courantes : km/miles, kg/livres, celsius/fahrenheit, mètres/pieds, litres/gallons.",
+      "url": "./services/convertisseur.html",
+      "mots_cles": ["convertis", "conversion", "en miles", "en km", "en livres", "en kg", "fahrenheit", "celsius", "en gallons", "en litres", "en pieds"],
+      "parametres_attendus": { "texte": "string (obligatoire) — la demande de conversion" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "generateur-mot-de-passe",
+      "nom": "Générateur de mot de passe",
+      "fonction": "Génère un mot de passe aléatoire sécurisé (aléa cryptographique), longueur personnalisable.",
+      "url": "./services/generateur-mot-de-passe.html",
+      "mots_cles": ["mot de passe", "génère un mot de passe", "password", "génère-moi un mot de passe"],
+      "parametres_attendus": { "texte": "string (optionnel) — peut contenir la longueur souhaitée" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "tirage-aleatoire",
+      "nom": "Tirage aléatoire",
+      "fonction": "Pile ou face, lancer de dé, choix aléatoire entre plusieurs options, ou nombre aléatoire dans une plage.",
+      "url": "./services/tirage-aleatoire.html",
+      "mots_cles": ["pile ou face", "lance un dé", "lance le dé", "dé à", "choisis entre", "nombre aléatoire", "tire au sort", "au hasard"],
+      "parametres_attendus": { "texte": "string (obligatoire) — le type de tirage demandé" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "notes",
+      "nom": "Notes (pense-bête local)",
+      "fonction": "Ajoute, liste ou efface des notes personnelles, sauvegardées localement dans le navigateur.",
+      "url": "./modules/notes.html",
+      "mots_cles": ["note :", "ajoute une note", "mes notes", "liste mes notes", "efface mes notes", "supprime mes notes"],
+      "parametres_attendus": { "texte": "string (obligatoire) — la commande ou le contenu de la note" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
       "id": "conversation-regles",
       "nom": "Conversation par règles (dictionnaire local)",
       "fonction": "Reconnaît un ensemble fixe de phrases courantes (salutations, remerciements, questions fréquentes, quelques snippets de code) et répond avec un texte préécrit. 100% local, instantané, aucun modèle de langage.",
