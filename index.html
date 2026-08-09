@@ -148,6 +148,24 @@
     font-style:italic;
   }
 
+  /* Journal d'exécution en temps réel — secondaire, discret */
+  .journal-execution{
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.9;
+    margin-bottom: 10px;
+  }
+  .journal-ligne{ display:flex; align-items:center; gap:6px; }
+  .journal-ligne .journal-etat{ flex:0 0 auto; }
+  .journal-ligne.termine{ color:var(--muted); }
+  .journal-ligne.encours{ color:var(--accent); }
+  .journal-separateur{
+    border:none;
+    border-top:1px solid var(--line);
+    margin: 10px 0;
+  }
+
   /* Mise en forme conversationnelle propre pour les réponses système */
   .bulle p { margin: 0 0 10px 0; }
   .bulle p:last-child { margin-bottom: 0; }
@@ -399,6 +417,18 @@
       registryUrl: './registry.json',
       onLog(entree) {
         console.debug('[router]', entree.evenement, entree.details);
+
+        if (entree.evenement === "APPEL_TERMINE") {
+          terminerDerniereLigne(true);
+          return;
+        }
+        if (entree.evenement === "APPEL_TIMEOUT") {
+          terminerDerniereLigne(false);
+          return;
+        }
+
+        const label = libelleEtape(entree.evenement, entree.details);
+        if (label) ajouterLigneJournal(label);
       }
     });
 
@@ -412,6 +442,78 @@
         texteReg.textContent = 'échec du chargement du registre';
       });
 
+    // ---------------------------------------------------------------------
+    // Journal d'exécution en temps réel — reflète uniquement les
+    // événements réellement tracés par le routeur (aucune étape simulée).
+    // ---------------------------------------------------------------------
+    let journalActif = null; // { conteneurEl, lignes: [{id, label, etat}] }
+
+    function libelleEtape(evenement, details) {
+      switch (evenement) {
+        case "REQUETE_RECUE": return "Analyse de la demande…";
+        case "CLASSIFICATION":
+          if (details && details.decision === "service") {
+            return "Sélection du neurone : " + (details.service || "?") + "…";
+          }
+          return "Recherche d'une capacité correspondante…";
+        case "APPEL_ENVOYE": return "Exécution : " + (details && details.service || "neurone") + "…";
+        default: return null;
+      }
+    }
+
+    function demarrerJournal(messageEl) {
+      const conteneurEl = document.createElement("div");
+      conteneurEl.className = "journal-execution";
+      const bulleEl = messageEl.querySelector(".bulle");
+      bulleEl.innerHTML = "";
+      bulleEl.appendChild(conteneurEl);
+      journalActif = { conteneurEl, lignes: [] };
+    }
+
+    function ajouterLigneJournal(label) {
+      if (!journalActif) return;
+      // Termine la ligne précédente encore en cours, si besoin
+      journalActif.lignes.forEach((l) => { if (l.etat === "encours") l.etat = "termine"; });
+      journalActif.lignes.push({ label, etat: "encours" });
+      rendreJournal();
+    }
+
+    function terminerDerniereLigne(succes = true) {
+      if (!journalActif || journalActif.lignes.length === 0) return;
+      const derniere = journalActif.lignes[journalActif.lignes.length - 1];
+      if (derniere.etat !== "encours") return; // déjà finalisée, ne pas écraser
+      derniere.etat = succes ? "termine" : "timeout";
+      rendreJournal();
+    }
+
+    function rendreJournal() {
+      if (!journalActif) return;
+      journalActif.conteneurEl.innerHTML = journalActif.lignes.map((l) => {
+        const symbole = l.etat === "encours"
+          ? '<span class="points-attente"><span></span><span></span><span></span></span>'
+          : l.etat === "timeout" ? "⚠" : "✓";
+        const classe = l.etat === "encours" ? "encours" : "termine";
+        const texteLigne = l.etat === "termine" ? l.label.replace(/…$/, "") + " — Tâche terminée" : l.label;
+        return '<div class="journal-ligne ' + classe + '"><span class="journal-etat">' + symbole + '</span><span>' + echapperHTML(texteLigne) + "</span></div>";
+      }).join("");
+      defilerVersLeBas();
+    }
+
+    function finaliserJournalEtReponse(messageEl, htmlReponse) {
+      const bulleEl = messageEl.querySelector(".bulle");
+      bulleEl.classList.remove("attente");
+      if (journalActif && journalActif.lignes.length > 0) {
+        const separateur = document.createElement("hr");
+        separateur.className = "journal-separateur";
+        bulleEl.appendChild(separateur);
+      }
+      const reponseEl = document.createElement("div");
+      reponseEl.innerHTML = htmlReponse;
+      bulleEl.appendChild(reponseEl);
+      journalActif = null;
+      defilerVersLeBas();
+    }
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const prompt = champ.value.trim();
@@ -424,16 +526,20 @@
 
       const messageAttente = ajouterMessage(
         'systeme',
-        '<span class="points-attente"><span></span><span></span><span></span></span>',
+        '',
         { etat: 'attente' }
       );
+      demarrerJournal(messageAttente);
 
       try {
         const resultat = await router.router(prompt);
+        terminerDerniereLigne(true); // filet de sécurité : ferme la dernière ligne si aucun
+                                      // événement APPEL_TERMINE/TIMEOUT n'a été émis (cas "interne")
         const formatage = formaterReponseAssistant(resultat);
-        mettreAJourMessage(messageAttente, formatage.html);
+        finaliserJournalEtReponse(messageAttente, formatage.html);
       } catch (err) {
-        mettreAJourMessage(messageAttente, `<p>Une erreur est survenue lors du traitement de votre demande.</p>`);
+        terminerDerniereLigne(false);
+        finaliserJournalEtReponse(messageAttente, `<p>Une erreur est survenue lors du traitement de votre demande.</p>`);
       } finally {
         btn.disabled = false;
         champ.focus();
