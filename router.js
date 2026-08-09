@@ -1,6 +1,6 @@
 /**
  * ==========================================================================
- *  ROUTER.JS — Orchestrateur symbolique de l'Interface Mère
+ *  ROUTER.JS — Orchestrateur symbolique de l'Interface Mère (Multitâche)
  * ==========================================================================
  *  Aucun LLM, aucune IA générative : uniquement des règles, des scores de
  *  correspondance, une mémoire locale d'associations apprises, et un
@@ -457,13 +457,60 @@ class Router {
   }
 
   // ========================================================================
-  // Point d'entrée principal
+  // Point d'entrée principal (Mis à jour pour supporter le multitâche simultané)
   // ========================================================================
 
   async router(prompt, containerElement = null) {
     this._log("REQUETE_RECUE", { prompt });
     if (!this.registry) await this.chargerRegistre();
 
+    // 1. Découpage intelligent de la phrase en sous-tâches (par ex. sur "et", ",", ";", ".")
+    const sousPrompts = prompt
+      .split(/,|\b(?:et|puis|ensuite)\b|\./i)
+      .map(p => p.trim())
+      .filter(p => p.length > 2); // Ignore les morceaux trop courts
+
+    // Si le découpage ne donne qu'un seul morceau (ou aucun), on traite normalement
+    if (sousPrompts.length <= 1) {
+      return await this._executerRequeteSimple(prompt, containerElement);
+    }
+
+    // 2. Mode Multitâche Simultané : on traite chaque sous-prompt en parallèle
+    this._log("MULTITACHE_DETECTE", { nb_taches: sousPrompts.length, sousPrompts });
+    
+    const promesses = sousPrompts.map(async (sousPrompt) => {
+      const classification = this.classifierRequete(sousPrompt);
+      if (classification.type === "service") {
+        const payload = this.construirePayload(classification.service, sousPrompt);
+        return await this.appelerService(classification.service, payload);
+      }
+      return null;
+    });
+
+    const resultatsBruts = await Promise.all(promesses);
+    const resultatsValides = resultatsBruts.filter(r => r !== null && r.reponse);
+
+    // 3. Consolidation de toutes les réponses dans un bloc unique pour l'interface mère
+    let htmlCombine = "";
+    if (resultatsValides.length > 0) {
+      htmlCombine = "<div style='display:flex; flex-direction:column; gap:12px;'>";
+      resultatsValides.forEach(res => {
+        htmlCombine += `<div style='background:#f9f9f8; padding:12px; border-radius:8px; border:1px solid #E3E0D8;'>${res.reponse}</div>`;
+      });
+      htmlCombine += "</div>";
+    } else {
+      htmlCombine = "<p style='margin:0; color:#666666;'>Aucun service n'a pu traiter simultanément ces demandes.</p>";
+    }
+
+    const reponseFinale = { succes: true, reponse: htmlCombine };
+    if (containerElement) {
+      containerElement.innerHTML = reponseFinale.reponse;
+    }
+    return reponseFinale;
+  }
+
+  // Méthode interne pour garder le comportement d'origine sur une requête simple
+  async _executerRequeteSimple(prompt, containerElement) {
     const classification = this.classifierRequete(prompt);
 
     if (classification.type === "reponse_directe") {
@@ -480,10 +527,7 @@ class Router {
         interne: true,
         reponse:
           `<p><strong>Capacité manquante</strong> : aucun neurone du registre ne correspond, même approximativement, à cette demande.</p>` +
-          `<p>Mots significatifs identifiés : ${this._echapper(motsTexte)}.</p>` +
-          `<p>Ce diagnostic reste fondé sur des règles, pas sur une vraie compréhension — si un neurone existe déjà pour ce besoin, ` +
-          `essayez de reformuler avec un mot plus proche de sa fonction déclarée. Sinon, un nouveau neurone devra être créé et enregistré ` +
-          `dans le registre pour combler ce manque.</p>`
+          `<p>Mots significatifs identifiés : ${this._echapper(motsTexte)}.</p>`
       };
       if (containerElement) containerElement.innerHTML = reponseInterne.reponse;
       return reponseInterne;
@@ -495,9 +539,7 @@ class Router {
         succes: true,
         interne: true,
         reponse:
-          `<p><strong>Incertain</strong> : cette demande pourrait correspondre à plusieurs neurones sans qu'un seul se ` +
-          `distingue clairement — <em>${this._echapper(a.service.nom || a.service.id)}</em> ou <em>${this._echapper(b.service.nom || b.service.id)}</em>.</p>` +
-          `<p>Plutôt que de choisir au hasard, précisez votre demande pour lever l'ambiguïté.</p>`
+          `<p><strong>Incertain</strong> : cette demande pourrait correspondre à plusieurs neurones — <em>${this._echapper(a.service.nom || a.service.id)}</em> ou <em>${this._echapper(b.service.nom || b.service.id)}</em>.</p>`
       };
       if (containerElement) containerElement.innerHTML = reponseIncertaine.reponse;
       return reponseIncertaine;
