@@ -267,3 +267,5 @@ if (userMessage.startsWith("lis:")) {
     const resultat = await window.secureStorage.getItem("ma_note_secrete", "MonMotDePasse123");
     return `Voici ta note secrète : ${resultat}`;
 }
+return null;
+}
