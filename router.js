@@ -113,6 +113,85 @@ class Router {
     return candidats.filter((c) => c.score > 0).sort((a, b) => b.score - a.score);
   }
 
+  /**
+   * Évalue les chaînes déclarées (registry.chaines) face à la requête,
+   * avec le même principe de score que evaluerCandidats — mais uniquement
+   * sur des mots-clés dédiés à la chaîne entière, pas déduit automatiquement.
+   */
+  evaluerChainesCandidates(prompt) {
+    const texteNormalise = prompt.toLowerCase();
+    return (this.registry.chaines || [])
+      .map((chaine) => {
+        let score = 0;
+        for (const motCle of chaine.mots_cles || []) {
+          if (texteNormalise.includes(motCle.toLowerCase())) score += 1;
+        }
+        return { chaine, score };
+      })
+      .filter((c) => c.score > 0)
+      .sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * Exécute une chaîne déclarée étape par étape. Chaque étape utilise soit
+   * le prompt original, soit un champ précis de la sortie de l'étape
+   * précédente (mapping explicite, pas d'inférence). Termine proprement
+   * et honnêtement si une étape échoue, plutôt que de prétendre un succès.
+   */
+  async executerChaine(chaine, promptOriginal) {
+    let sortiePrecedente = null;
+    const etapesReussies = [];
+
+    for (const etape of chaine.etapes) {
+      const service = this.registry.services.find((s) => s.id === etape.service);
+      if (!service) {
+        return {
+          succes: true,
+          texteRedige: `La chaîne "${chaine.nom}" référence un neurone introuvable (${etape.service}) — étape annulée.`
+        };
+      }
+
+      let payload;
+      if (etape.entree === "prompt_original" || !sortiePrecedente) {
+        payload = this.construirePayload(service, promptOriginal);
+      } else {
+        const valeurEntree = (sortiePrecedente[etape.entree_depuis] || "").toString();
+        payload = { [etape.champ_entree || "texte"]: valeurEntree };
+      }
+
+      const resultat = await this.appelerService(service, payload);
+
+      if (resultat.succes === false) {
+        return {
+          succes: true,
+          texteRedige:
+            `La chaîne "${chaine.nom}" s'est arrêtée à l'étape "${service.nom}" (aucun résultat exploitable). ` +
+            `Étape(s) réussie(s) avant cela : ${etapesReussies.join(", ") || "aucune"}.`
+        };
+      }
+
+      etapesReussies.push(service.nom || service.id);
+      sortiePrecedente = resultat;
+    }
+
+    // Vérification finale (§ principe essentiel : ne jamais prétendre un
+    // succès sans texte exploitable réellement produit)
+    const texteFinal = (sortiePrecedente && sortiePrecedente.texteRedige) || "";
+    this._log("CHAINE_VERIFICATION", { chaine: chaine.id, valide: !!texteFinal.trim() });
+
+    if (!texteFinal.trim()) {
+      return { succes: true, texteRedige: `La chaîne "${chaine.nom}" s'est terminée sans produire de texte exploitable.` };
+    }
+
+    return {
+      succes: true,
+      texteRedige: texteFinal,
+      resultats: sortiePrecedente.resultats || [],
+      _chaine: chaine.id,
+      _etapes: etapesReussies
+    };
+  }
+
   // ========================================================================
   // 2. ANALYSE STRUCTURÉE DE LA REQUÊTE
   // ========================================================================
@@ -250,8 +329,15 @@ class Router {
       return { type: "service", service: souvenir.service, confiance: "mémorisée" };
     }
 
-    // 2) Évaluation par score sur tous les candidats
+    // 2) Chaînes déclarées vs. services simples — la chaîne l'emporte si
+    // son score dédié est au moins aussi élevé qu'un service seul.
+    const candidatsChaine = this.evaluerChainesCandidates(prompt);
     const candidats = this.evaluerCandidats(prompt);
+
+    if (candidatsChaine.length > 0 && (candidats.length === 0 || candidatsChaine[0].score >= candidats[0].score)) {
+      this._log("CLASSIFICATION", { prompt, decision: "chaine", chaine: candidatsChaine[0].chaine.id });
+      return { type: "chaine", chaine: candidatsChaine[0].chaine };
+    }
 
     if (candidats.length === 0) {
       const analyse = this.analyserRequete(prompt);
@@ -415,6 +501,10 @@ class Router {
       };
       if (containerElement) containerElement.innerHTML = reponseIncertaine.reponse;
       return reponseIncertaine;
+    }
+
+    if (classification.type === "chaine") {
+      return await this.executerChaine(classification.chaine, prompt);
     }
 
     // type === "service"
