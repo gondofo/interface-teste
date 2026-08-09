@@ -51,20 +51,66 @@ class Router {
   }
 
   /**
+   * Distance de Levenshtein — nombre minimal de modifications (ajout,
+   * suppression, substitution) pour passer d'un mot à l'autre. Sert à la
+   * tolérance aux fautes de frappe : ce n'est PAS de la compréhension du
+   * langage, juste un rapprochement orthographique entre mots proches.
+   */
+  _distanceLevenshtein(a, b) {
+    const m = a.length, n = b.length;
+    const d = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 0; i <= m; i++) d[i][0] = i;
+    for (let j = 0; j <= n; j++) d[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        const cout = a[i - 1] === b[j - 1] ? 0 : 1;
+        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cout);
+      }
+    }
+    return d[m][n];
+  }
+
+  /**
+   * Un mot du message "correspond" à un mot d'un mot-clé si identique, ou
+   * si sa distance de Levenshtein est faible relativement à sa longueur
+   * (tolère 1 faute sur un mot court, 2 sur un mot plus long).
+   */
+  _motsProches(motMessage, motCle) {
+    if (motMessage === motCle) return true;
+    if (Math.abs(motMessage.length - motCle.length) > 2) return false;
+    const tolerance = motCle.length <= 4 ? 1 : motCle.length <= 8 ? 2 : 3;
+    return this._distanceLevenshtein(motMessage, motCle) <= tolerance;
+  }
+
+  /**
    * Analyse le prompt utilisateur et sélectionne le micro-service le plus
    * pertinent en comparant les mots-clés du registre au texte de la requête.
+   * Un match exact (substring) vaut 1 point ; un match approximatif
+   * (faute de frappe tolérée) vaut 0.5 point, pour privilégier les vraies
+   * correspondances en cas d'ambiguïté.
    */
   selectionnerService(prompt) {
     if (!this.registry) throw new Error("Registre non chargé. Appeler chargerRegistre() d'abord.");
 
     const texteNormalise = prompt.toLowerCase();
+    const motsMessage = texteNormalise.match(/[a-zàâçéèêëîïôûùüÿñæœ']+/g) || [];
     let meilleurScore = 0;
     let meilleurService = null;
 
     for (const service of this.registry.services) {
       let score = 0;
       for (const motCle of service.mots_cles) {
-        if (texteNormalise.includes(motCle.toLowerCase())) score++;
+        const motCleNormalise = motCle.toLowerCase();
+        if (texteNormalise.includes(motCleNormalise)) {
+          score += 1;
+          continue;
+        }
+        // Repli flou : uniquement pour les mots-clés d'un seul mot,
+        // pour éviter les faux positifs sur des expressions longues.
+        if (!motCleNormalise.includes(" ") && motCleNormalise.length >= 3) {
+          const approx = motsMessage.some((m) => this._motsProches(m, motCleNormalise));
+          if (approx) score += 0.5;
+        }
       }
       if (score > meilleurScore) {
         meilleurScore = score;
@@ -252,10 +298,11 @@ class Router {
         succes: true,
         interne: true,
         reponse:
-          "<p>Ce type d'échange (discussion libre, code, raisonnement, analyse) n'est pas encore pris en charge " +
-          "par un module dédié sur cette interface — pour l'instant, seuls les micro-services du registre " +
-          "répondent (recherche factuelle, calcul, traduction, résumé, date/heure). Aucune recherche web n'a " +
-          "été lancée pour ce message.</p>"
+          "<p><strong>Capacité manquante</strong> : aucun neurone du registre ne semble correspondre à cette " +
+          "demande (recherche par mots-clés, aucune correspondance suffisante).</p>" +
+          "<p>Ce diagnostic reste approximatif — il repose sur des mots-clés, pas sur une vraie compréhension " +
+          "de la phrase. Si un neurone existe mais n'a pas été reconnu, essayez de reformuler avec des mots " +
+          "plus proches de sa fonction (ex: \"calcule\", \"traduis\", \"résume\").</p>"
       };
       if (containerElement) containerElement.innerHTML = reponseInterne.reponse;
       return reponseInterne;
