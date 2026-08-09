@@ -76,45 +76,34 @@ class Router {
   }
 
   /**
-   * Détecte si le message ressemble à de la discussion libre, du code, du
-   * raisonnement ou de l'analyse — cas où il ne faut PAS lancer de
-   * recherche web, faute de correspondance avec un besoin factuel.
+   * Sélectionne le service le plus pertinent — y compris, désormais, le
+   * service "conversation" qui participe au même scoring par mots-clés
+   * que les autres (calcul, traduction, résumé, date, recherche web).
+   * Un message comme "bonjour" ou "écris-moi une fonction Python" obtient
+   * un meilleur score côté "conversation" que côté "web-search", et sera
+   * donc routé vers le neurone de conversation locale plutôt que vers une
+   * recherche inutile.
    *
-   * Heuristique par mots-clés uniquement (aucun moteur de langage n'est
-   * branché sur cette interface à ce jour) : elle réduit les recherches
-   * inutiles sur les messages évidents, mais ne "comprend" pas la requête.
-   */
-  estConversationLibre(prompt) {
-    const motsConversation = (this.registry._meta && this.registry._meta.mots_cles_conversation) || [];
-    const texteNormalise = prompt.toLowerCase();
-    return motsConversation.some((mot) => texteNormalise.includes(mot.toLowerCase()));
-  }
-
-  /**
-   * Combine sélection de service et détection de discussion libre :
-   *   - un service déterministe (calcul, traduction, résumé, date, recherche)
-   *     garde la priorité s'il matche mieux que les mots-clés de conversation
-   *   - si le seul service qui matche est la recherche web, mais que le
-   *     message ressemble aussi à de la discussion/code/raisonnement,
-   *     on évite la recherche et on route en interne
-   *   - sinon, si rien ne matche du tout, on route en interne également
+   * Si aucun service n'obtient le moindre point (aucun mot-clé reconnu du
+   * tout), on tente quand même le neurone "conversation" en dernier
+   * recours plutôt que d'afficher un message interne statique.
    */
   classifierRequete(prompt) {
     const service = this.selectionnerService(prompt);
-    const conversationnel = this.estConversationLibre(prompt);
 
-    if (!service) {
-      this._log("CLASSIFICATION", { prompt, decision: "interne", raison: "aucun_service" });
-      return { type: "interne", raison: "aucun_service" };
+    if (service) {
+      this._log("CLASSIFICATION", { prompt, decision: "service", service: service.id });
+      return { type: "service", service };
     }
 
-    if (service.id === "web-search" && conversationnel) {
-      this._log("CLASSIFICATION", { prompt, decision: "interne", raison: "conversation_detectee" });
-      return { type: "interne", raison: "conversation_detectee" };
+    const serviceConversation = this.registry.services.find((s) => s.id === "conversation");
+    if (serviceConversation) {
+      this._log("CLASSIFICATION", { prompt, decision: "service", service: "conversation", raison: "repli_aucun_mot_cle" });
+      return { type: "service", service: serviceConversation };
     }
 
-    this._log("CLASSIFICATION", { prompt, decision: "service", service: service.id });
-    return { type: "service", service };
+    this._log("CLASSIFICATION", { prompt, decision: "interne", raison: "aucun_service" });
+    return { type: "interne", raison: "aucun_service" };
   }
 
   /**
@@ -135,6 +124,8 @@ class Router {
         return { texte: prompt, longueur_max: 3 };
       case "horodateur":
         return { format: "long" };
+      case "conversation":
+        return { texte: prompt };
       case "recherche":
       case "web-search":
       case "sage-html":
