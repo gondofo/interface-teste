@@ -37,6 +37,8 @@
       "format_reponse": { "succes": true, "texteRedige": "string" },
       "timeout_ms": 5000
     },
+    {
+      "id": "aide",
       "nom": "Aide (liste des capacités)",
       "fonction": "Liste dynamiquement, à partir du registre, tout ce que l'interface sait faire actuellement.",
       "url": "./modules/aide.html",
