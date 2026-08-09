@@ -6,6 +6,18 @@
     "protocole": "iframe-postMessage",
     "note_protocole": "Chaque micro-service est chargé dans une iframe invisible. La charge utile est transmise via window.postMessage({type:'MS_REQUEST', requestId, payload}). Le micro-service répond via window.postMessage({type:'MS_RESPONSE', requestId, result}). Ce mécanisme fonctionne cross-origin sans configuration serveur (CORS), contrairement à fetch()."
   },
+  "chaines": [
+    {
+      "id": "recherche-et-resume",
+      "nom": "Recherche puis résumé",
+      "description": "Cherche un sujet sur le web (neurone web-search), puis condense le résultat en résumé court (neurone resume-texte). Exemple concret de chaîne déclarée : le format d'entrée/sortie entre les deux neurones est fixé explicitement ici, pas déduit automatiquement.",
+      "mots_cles": ["recherche et résume", "cherche et résume", "trouve et résume", "recherche puis résume", "résume les infos sur"],
+      "etapes": [
+        { "service": "web-search", "entree": "prompt_original" },
+        { "service": "resume-texte", "entree_depuis": "texteRedige", "champ_entree": "texte" }
+      ]
+    }
+  ],
   "services": [
     {
       "id": "generateur-uuid",
