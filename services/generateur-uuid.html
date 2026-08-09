@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Générateur UUID</title></head>
+<body>
+<!-- Neurone "generateur-uuid" — identifiant unique via crypto.randomUUID(). -->
+<script>
+(function () {
+  "use strict";
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && payload.texte) || "").toLowerCase();
+    const match = texte.match(/(\d{1,2})/);
+    const quantite = Math.max(1, Math.min(20, match ? parseInt(match[1], 10) : 1));
+
+    const ids = [];
+    for (let i = 0; i < quantite; i++) ids.push(crypto.randomUUID());
+
+    return {
+      succes: true,
+      texteRedige: quantite === 1
+        ? "Identifiant généré :\n\n" + ids[0]
+        : quantite + " identifiants générés :\n\n" + ids.join("\n")
+    };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

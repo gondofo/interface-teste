@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Encodeur Base64</title></head>
+<body>
+<!-- Neurone "encodeur-base64" — encode/décode du texte en Base64, localement. -->
+<script>
+(function () {
+  "use strict";
+
+  const MESSAGE_ECHEC = "Je n'ai pas pu décoder ce texte — vérifiez qu'il s'agit bien de Base64 valide.";
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && payload.texte) || "").trim();
+    if (!texte) return { succes: false };
+    const texteNormalise = texte.toLowerCase();
+
+    const decodeMatch = texte.match(/décode(?:r)?\s*(?:en base64)?\s*:?\s*(.+)/i);
+    if (decodeMatch && /décode/i.test(texteNormalise)) {
+      try {
+        const decode = decodeURIComponent(escape(atob(decodeMatch[1].trim())));
+        return { succes: true, texteRedige: "Texte décodé :\n\n" + decode };
+      } catch (erreur) {
+        return { succes: true, texteRedige: MESSAGE_ECHEC };
+      }
+    }
+
+    const encodeMatch = texte.match(/encode(?:r)?\s*(?:en base64)?\s*:?\s*(.+)/i);
+    const contenu = encodeMatch ? encodeMatch[1].trim() : texte;
+    const encode = btoa(unescape(encodeURIComponent(contenu)));
+
+    return { succes: true, texteRedige: "Texte encodé en Base64 :\n\n" + encode };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

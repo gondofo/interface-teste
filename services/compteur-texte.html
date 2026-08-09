@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Compteur de texte</title></head>
+<body>
+<!-- Neurone "compteur-texte" — statistiques exactes sur un texte donné. -->
+<script>
+(function () {
+  "use strict";
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && payload.texte) || "");
+    if (!texte.trim()) return { succes: false };
+
+    const caracteres = texte.length;
+    const caracteresSansEspaces = texte.replace(/\s/g, "").length;
+    const mots = (texte.match(/\S+/g) || []).length;
+    const phrases = (texte.match(/[.!?]+/g) || []).length;
+
+    const texteRedige =
+      "Caractères : " + caracteres + " (" + caracteresSansEspaces + " sans les espaces)\n" +
+      "Mots : " + mots + "\n" +
+      "Phrases (approximatif) : " + Math.max(phrases, texte.trim() ? 1 : 0);
+
+    return { succes: true, texteRedige };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
