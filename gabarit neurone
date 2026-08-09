@@ -1,1 +1,125 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Neurone — [NOM_DU_NEURONE]</title>
+</head>
+<body>
+<!--
+  ============================================================================
+  GABARIT STANDARD DE NEURONE — Interface Mère
+  ============================================================================
 
+  COMMENT CRÉER UN NOUVEAU NEURONE À PARTIR DE CE FICHIER :
+
+  1. Copiez ce fichier sous ./modules/<id-du-service>.html
+     (le nom doit correspondre exactement au champ "url" que vous ajoutez
+     dans registry.json)
+
+  2. Remplissez UNIQUEMENT les 3 zones marquées "À PERSONNALISER" plus bas.
+     Ne touchez pas au reste : c'est le protocole partagé par tous les
+     neurones, il doit rester identique partout pour que l'interface mère
+     sache leur parler sans surprise.
+
+  3. Ajoutez une entrée correspondante dans registry.json :
+     {
+       "id": "id-du-service",
+       "nom": "Nom lisible",
+       "fonction": "Description courte de ce que fait ce neurone.",
+       "url": "./modules/id-du-service.html",
+       "mots_cles": ["mot1", "mot2", ...],
+       "parametres_attendus": { "champ": "description" },
+       "format_reponse": { "succes": true, "...": "..." },
+       "timeout_ms": 5000
+     }
+
+  PROTOCOLE (ne pas modifier) :
+    Reçoit : window.postMessage({ type: 'MS_REQUEST', requestId, payload })
+    Répond : window.postMessage({ type: 'MS_RESPONSE', requestId, result })
+
+    result doit TOUJOURS être un objet avec :
+      - succes: true | false   (obligatoire — c'est ce que lit l'interface
+                                 mère pour décider d'afficher une erreur ou non)
+      - texteRedige: "..."      (optionnel — texte prêt à afficher, priorité
+                                 la plus haute côté interface mère)
+      - resultats: [{title, url}, ...]  (optionnel — sources/liens cliquables,
+                                 attention à la clé anglaise "title", pas "titre")
+      - suggestions: [{title, url}, ...] (optionnel — pistes cliquables
+                                 proposées quand succes: false, plutôt qu'une
+                                 erreur sèche)
+
+    Aucune exception ne doit jamais remonter au-delà de traiterRequete() :
+    tout échec interne (réseau, parsing, etc.) doit se résoudre en un
+    objet { succes: false, ... } propre, jamais en erreur JS non gérée.
+  ============================================================================
+-->
+<script>
+(function () {
+  "use strict";
+
+  // ==========================================================================
+  // À PERSONNALISER (1/3) — logique métier du neurone
+  //
+  // Cette fonction reçoit le payload envoyé par la mère (déjà défini dans
+  // router.js -> construirePayload()) et doit retourner un objet result
+  // conforme au protocole ci-dessus. Ne JAMAIS laisser une exception
+  // s'échapper de cette fonction : entourez toute logique risquée d'un
+  // try/catch et renvoyez { succes: false } en cas de problème.
+  // ==========================================================================
+  async function traiterRequete(payload) {
+    try {
+      // Exemple de squelette — remplacez par la vraie logique du neurone :
+      //
+      // const donnee = payload.champAttendu;
+      // if (!donnee) return { succes: false };
+      // const resultatCalcule = ... ;
+      // return {
+      //   succes: true,
+      //   texteRedige: "texte prêt à afficher",
+      //   resultats: [{ title: "Source 1", url: "https://..." }]
+      // };
+
+      return { succes: false };
+    } catch (erreur) {
+      // Jamais affiché ni renvoyé tel quel — juste loggé pour le débogage
+      // local (F12 > Console), conformément à la règle "zéro erreur visible".
+      console.error("[NOM_DU_NEURONE]", erreur);
+      return { succes: false };
+    }
+  }
+
+  // ==========================================================================
+  // À PERSONNALISER (2/3) — rien à faire ici dans la plupart des cas.
+  // Cette section reste identique pour tous les neurones : elle applique
+  // le protocole MS_REQUEST / MS_RESPONSE défini dans registry.json.
+  // ==========================================================================
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({
+        type: "MS_RESPONSE",
+        requestId: requestId,
+        result: result
+      }, "*");
+    });
+  });
+
+  // ==========================================================================
+  // À PERSONNALISER (3/3) — optionnel : interface visuelle du neurone.
+  //
+  // Le neurone tourne dans une iframe invisible pilotée par la mère, donc
+  // aucune interface visuelle n'est nécessaire pour qu'il fonctionne. Vous
+  // pouvez laisser cette section vide, ou y ajouter un mode de test autonome
+  // (un petit formulaire visible uniquement quand le fichier est ouvert
+  // directement dans un onglet, hors iframe) si vous voulez tester le
+  // neurone isolément avant de l'intégrer au registre.
+  // ==========================================================================
+})();
+</script>
+</body>
+</html>
