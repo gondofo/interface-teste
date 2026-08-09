@@ -453,8 +453,11 @@
         case "REQUETE_RECUE": return "Analyse de la demande…";
         case "CLASSIFICATION":
           if (details && details.decision === "service") {
-            return "Sélection du neurone : " + (details.service || "?") + "…";
+            const confiance = details.confiance ? " (confiance : " + details.confiance + ")" : "";
+            return "Sélection du neurone : " + (details.service || "?") + confiance + "…";
           }
+          if (details && details.decision === "incertain") return "Plusieurs neurones possibles, ambiguïté détectée…";
+          if (details && details.decision === "capacite_manquante") return "Aucune capacité correspondante trouvée…";
           return "Recherche d'une capacité correspondante…";
         case "APPEL_ENVOYE": return "Exécution : " + (details && details.service || "neurone") + "…";
         default: return null;
