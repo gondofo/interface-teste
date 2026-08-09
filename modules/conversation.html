@@ -24,10 +24,10 @@
     const uaMobile = /Android|iPhone|iPad|iPod|Mobile|Tablet|Silk/i.test(navigator.userAgent);
     if (uaMobile) return false;
 
-    // navigator.deviceMemory n'est pas disponible partout (ex: Safari) —
-    // absence d'info ne bloque pas, seule une valeur basse confirmée bloque.
-    if (typeof navigator.deviceMemory === "number" && navigator.deviceMemory < 4) return false;
-
+    // navigator.deviceMemory est peu fiable (arrondi par le navigateur pour
+    // des raisons de confidentialité, un vrai 4 Go pouvant se signaler
+    // comme "2") : on ne bloque plus dessus. Le vrai filet de sécurité,
+    // c'est le try/catch + le délai maximal autour du chargement plus bas.
     return true;
   }
 
