@@ -4,17 +4,31 @@
     "version": "1.1.0",
     "description": "Annuaire centralisé de tous les micro-services (« neurones ») accessibles par l'Interface Mère. Chaque entrée décrit un service statique autonome : sa compétence, son URL, ses paramètres attendus et le format de sa réponse.",
     "protocole": "iframe-postMessage",
-    "note_protocole": "Chaque micro-service est chargé dans une iframe invisible. La charge utile est transmise via window.postMessage({type:'MS_REQUEST', requestId, payload}). Le micro-service répond via window.postMessage({type:'MS_RESPONSE', requestId, result}). Ce mécanisme fonctionne cross-origin sans configuration serveur (CORS), contrairement à fetch().",
-    "mots_cles_conversation": [
-      "bonjour", "salut", "coucou", "bonsoir", "merci", "comment vas-tu",
-      "ça va", "raconte", "blague", "écris du code", "code python",
-      "code javascript", "fonction", "algorithme", "débogue", "debug",
-      "corrige ce code", "explique comment coder", "aide-moi à réfléchir",
-      "raisonnement", "raisonne", "analyse ce problème", "que penses-tu",
-      "ton avis", "aide-moi à écrire", "brainstorm", "réfléchissons"
-    ]
+    "note_protocole": "Chaque micro-service est chargé dans une iframe invisible. La charge utile est transmise via window.postMessage({type:'MS_REQUEST', requestId, payload}). Le micro-service répond via window.postMessage({type:'MS_RESPONSE', requestId, result}). Ce mécanisme fonctionne cross-origin sans configuration serveur (CORS), contrairement à fetch()."
   },
   "services": [
+    {
+      "id": "conversation",
+      "nom": "Conversation locale (LLM dans le navigateur)",
+      "fonction": "Discussion libre, code, logique et analyse via un petit modèle de langage exécuté entièrement côté client. Indisponible sur mobile ou appareils à mémoire limitée (renvoie une explication honnête dans ce cas plutôt qu'un plantage).",
+      "url": "./modules/conversation.html",
+      "mots_cles": [
+        "bonjour", "salut", "coucou", "bonsoir", "merci", "comment vas-tu",
+        "ça va", "raconte", "blague", "écris du code", "code python",
+        "code javascript", "fonction", "algorithme", "débogue", "debug",
+        "corrige ce code", "explique comment coder", "aide-moi à réfléchir",
+        "raisonnement", "raisonne", "analyse ce problème", "que penses-tu",
+        "ton avis", "aide-moi à écrire", "brainstorm", "réfléchissons"
+      ],
+      "parametres_attendus": {
+        "texte": "string (obligatoire) — le message de l'utilisateur"
+      },
+      "format_reponse": {
+        "succes": true,
+        "texteRedige": "string"
+      },
+      "timeout_ms": 60000
+    },
     {
       "id": "resume-texte",
       "nom": "Résumeur de texte",
