@@ -108,6 +108,30 @@
   }
 
   // ---------------------------------------------------------------------
+  // 3bis. Suggestions de secours (API opensearch Wikipédia — gratuite,
+  //       sans clé) quand aucune correspondance exacte n'est trouvée.
+  // ---------------------------------------------------------------------
+  async function suggererPistes(sujet) {
+    const url =
+      "https://fr.wikipedia.org/w/api.php?action=opensearch&format=json&origin=*&limit=4&namespace=0&search=" +
+      encodeURIComponent(sujet);
+
+    try {
+      const reponse = await fetch(url);
+      if (!reponse.ok) return [];
+      const data = await reponse.json();
+      const titres = data[1] || [];
+      const urls = data[3] || [];
+      return titres
+        .map(function (titre, i) { return { title: titre, url: urls[i] || "" }; })
+        .filter(function (s) { return s.title && s.url; });
+    } catch (erreur) {
+      console.error("[search.html] suggestions", erreur);
+      return [];
+    }
+  }
+
+  // ---------------------------------------------------------------------
   // 4. Traitement d'une requête — retourne toujours un objet valide,
   //    jamais d'exception, jamais de champ technique brut.
   // ---------------------------------------------------------------------
@@ -121,7 +145,8 @@
     try {
       const extraits = await rechercherWikipedia(sujet);
       if (extraits.length === 0) {
-        return { succes: false };
+        const suggestions = await suggererPistes(sujet);
+        return { succes: false, suggestions: suggestions };
       }
       return {
         succes: true,
