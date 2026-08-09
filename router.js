@@ -464,25 +464,26 @@ class Router {
     this._log("REQUETE_RECUE", { prompt });
     if (!this.registry) await this.chargerRegistre();
 
-    // 1. Découpage intelligent de la phrase en sous-tâches (par ex. sur "et", ",", ";", ".")
+    // Découpage large sur les virgules, les points-virgules et les "et"
     const sousPrompts = prompt
-      .split(/,|\b(?:et|puis|ensuite)\b|\./i)
+      .split(/[,;]|\b(?:et|puis|ensuite)\b/i)
       .map(p => p.trim())
-      .filter(p => p.length > 2); // Ignore les morceaux trop courts
+      .filter(p => p.length > 2);
 
-    // Si le découpage ne donne qu'un seul morceau (ou aucun), on traite normalement
     if (sousPrompts.length <= 1) {
       return await this._executerRequeteSimple(prompt, containerElement);
     }
 
-    // 2. Mode Multitâche Simultané : on traite chaque sous-prompt en parallèle
     this._log("MULTITACHE_DETECTE", { nb_taches: sousPrompts.length, sousPrompts });
-    
+
+    // Exécution simultanée de TOUS les sous-prompts détectés
     const promesses = sousPrompts.map(async (sousPrompt) => {
       const classification = this.classifierRequete(sousPrompt);
       if (classification.type === "service") {
         const payload = this.construirePayload(classification.service, sousPrompt);
         return await this.appelerService(classification.service, payload);
+      } else if (classification.type === "chaine") {
+        return await this.executerChaine(classification.chaine, sousPrompt);
       }
       return null;
     });
@@ -490,7 +491,6 @@ class Router {
     const resultatsBruts = await Promise.all(promesses);
     const resultatsValides = resultatsBruts.filter(r => r !== null && r.reponse);
 
-    // 3. Consolidation de toutes les réponses dans un bloc unique pour l'interface mère
     let htmlCombine = "";
     if (resultatsValides.length > 0) {
       htmlCombine = "<div style='display:flex; flex-direction:column; gap:12px;'>";
