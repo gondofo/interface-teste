@@ -371,7 +371,8 @@ class Router {
         const match = prompt.match(/[\d+\-*/().,\s]+(?=\D*$)|[\d+\-*/().,\s]{2,}/);
         return { expression: match ? match[0].trim() : prompt };
       }
-      case "traducteur": {
+      case "traducteur":
+      case "traduction-etendue": {
         const cible = /anglais|english|en anglais/i.test(prompt) ? "en" : "fr";
         return { texte: prompt, cible };
       }
