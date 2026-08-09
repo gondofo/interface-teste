@@ -8,17 +8,14 @@
   },
   "services": [
     {
-      "id": "conversation",
-      "nom": "Conversation locale (LLM dans le navigateur)",
-      "fonction": "Discussion libre, code, logique et analyse via un petit modèle de langage exécuté entièrement côté client. Indisponible sur mobile ou appareils à mémoire limitée (renvoie une explication honnête dans ce cas plutôt qu'un plantage).",
-      "url": "./modules/conversation.html",
+      "id": "conversation-regles",
+      "nom": "Conversation par règles (dictionnaire local)",
+      "fonction": "Reconnaît un ensemble fixe de phrases courantes (salutations, remerciements, questions fréquentes, quelques snippets de code) et répond avec un texte préécrit. 100% local, instantané, aucun modèle de langage.",
+      "url": "./modules/conversation-regles.html",
       "mots_cles": [
         "bonjour", "salut", "coucou", "bonsoir", "merci", "comment vas-tu",
-        "ça va", "raconte", "blague", "écris du code", "code python",
-        "code javascript", "fonction", "algorithme", "débogue", "debug",
-        "corrige ce code", "explique comment coder", "aide-moi à réfléchir",
-        "raisonnement", "raisonne", "analyse ce problème", "que penses-tu",
-        "ton avis", "aide-moi à écrire", "brainstorm", "réfléchissons"
+        "ça va", "qui es-tu", "qui êtes-vous", "raconte une blague", "blague",
+        "hello world", "au revoir", "à bientôt"
       ],
       "parametres_attendus": {
         "texte": "string (obligatoire) — le message de l'utilisateur"
@@ -27,7 +24,28 @@
         "succes": true,
         "texteRedige": "string"
       },
-      "timeout_ms": 170000
+      "timeout_ms": 5000
+    },
+    {
+      "id": "conversation-mini",
+      "nom": "Conversation (modèle miniature local)",
+      "fonction": "Discussion plus ouverte, code, logique via un modèle de langage minuscule (135M paramètres, SmolLM2-135M-Instruct) exécuté entièrement dans le navigateur. Principalement entraîné en anglais : qualité limitée en français. Indisponible sur mobile.",
+      "url": "./modules/conversation-mini.html",
+      "mots_cles": [
+        "écris du code", "code python", "code javascript", "fonction",
+        "algorithme", "débogue", "debug", "corrige ce code",
+        "explique comment coder", "aide-moi à réfléchir", "raisonnement",
+        "raisonne", "analyse ce problème", "que penses-tu", "ton avis",
+        "aide-moi à écrire", "brainstorm", "réfléchissons"
+      ],
+      "parametres_attendus": {
+        "texte": "string (obligatoire) — le message de l'utilisateur"
+      },
+      "format_reponse": {
+        "succes": true,
+        "texteRedige": "string"
+      },
+      "timeout_ms": 100000
     },
     {
       "id": "resume-texte",
