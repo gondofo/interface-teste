@@ -77,7 +77,10 @@
     }
 
     try {
-      const gen = await avecDelaiMax(obtenirGenerateur(), 45000);
+      // Le chargement du modèle n'arrive qu'une fois (téléchargement ~350 Mo
+      // puis mise en cache navigateur) : on lui laisse largement le temps,
+      // surtout sur un premier essai / connexion lente.
+      const gen = await avecDelaiMax(obtenirGenerateur(), 120000);
 
       const messages = [
         {
@@ -91,9 +94,10 @@
         { role: "user", content: texte }
       ];
 
+      // La génération, elle, doit rester rapide une fois le modèle en mémoire.
       const sortie = await avecDelaiMax(
         gen(messages, { max_new_tokens: 350, temperature: 0.7, do_sample: true, top_p: 0.9, return_full_text: false }),
-        45000
+        40000
       );
 
       const brut = sortie?.[0]?.generated_text;
