@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Micro-service Traduction avec Apprentissage</title>
+</head>
+<body>
+<script>
+  // 1. Dictionnaire de base initial
+  const dictionnaireBase = {
+    "welcome to the system": "bienvenue dans le système",
+    "hello world": "bonjour le monde",
+    "computer": "ordinateur",
+    "software": "logiciel"
+  };
+
+  // 2. Fonction pour charger la mémoire d'apprentissage du navigateur (localStorage)
+  function chargerMemoireTraduction() {
+    try {
+      const sauvegarde = localStorage.getItem("dictionnaire_appris");
+      if (sauvegarde) {
+        return JSON.parse(sauvegarde);
+      }
+    } catch (e) {
+      // En cas de restriction du navigateur (mode privé par exemple)
+    }
+    return {};
+  }
+
+  // 3. Fonction pour sauvegarder un nouveau mot appris
+  function apprendreMot(cle, valeur) {
+    const memoire = chargerMemoireTraduction();
+    memoire[cle.toLowerCase().trim()] = valeur.toLowerCase().trim();
+    try {
+      localStorage.setItem("dictionnaire_appris", JSON.stringify(memoire));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Fusion du dictionnaire de base et de la mémoire apprise
+  function obtenirDictionnaireComplet() {
+    const memoire = chargerMemoireTraduction();
+    return { ...dictionnaireBase, ...memoire };
+  }
+
+  // Écoute des messages venant de l'interface mère (le routeur)
+  window.addEventListener("message", (event) => {
+    const data = event.data;
+    if (!data || data.type !== "MS_REQUEST") return;
+
+    const { requestId, payload } = data;
+    const texteBrut = (payload.texte || payload.query || "").trim();
+    
+    let resultatTexte = "";
+    let htmlReponse = "";
+
+    // -- COMMANDE D'APPRENTISSAGE EXPLICITE --
+    // Exemple de requête : "apprendre: apple = pomme"
+    const matchApprentissage = texteBrut.match(/^apprendre\s*:\s*(.+?)\s*=\s*(.+)$/i);
+    if (matchApprentissage) {
+      const motEtranger = matchApprentissage[1];
+      const traductionFr = matchApprentissage[2];
+      
+      apprendreMot(motEtranger, traductionFr);
+
+      resultatTexte = `Nouveau mot appris : "${motEtranger}" -> "${traductionFr}"`;
+      htmlReponse = `
+        <div style="font-family:sans-serif; padding:4px;">
+          <p style="margin:0 0 4px 0; font-size:0.85rem; color:#2e7d32;">[Module Traduction - Apprentissage réussi]</p>
+          <p style="margin:0; font-size:1rem; color:#1A1A1A;">J'ai mémorisé que <strong>"${motEtranger}"</strong> se traduit par <strong>"${traductionFr}"</strong>.</p>
+        </div>
+      `;
+    } 
+    else {
+      // -- TRADUCTION NORMALE --
+      const dictionnaireActuel = obtenirDictionnaireComplet();
+      const texteMinuscule = texteBrut.toLowerCase();
+
+      if (dictionnaireActuel[texteMinuscule]) {
+        resultatTexte = dictionnaireActuel[texteMinuscule];
+      } else {
+        // Traduction mot par mot avec les connaissances de base + la mémoire
+        const mots = texteBrut.split(/\s+/);
+        const traduits = mots.map(mot => {
+          const propre = mot.toLowerCase().replace(/[.,!?]/g, "");
+          return dictionnaireActuel[propre] || mot;
+        });
+        resultatTexte = traduits.join(" ");
+      }
+
+      htmlReponse = `
+        <div style="font-family:sans-serif; padding:4px;">
+          <p style="margin:0 0 4px 0; font-size:0.85rem; color:#888;">[Module Traduction Étendue & Appris]</p>
+          <p style="margin:0; font-size:1rem; color:#1A1A1A;"><strong>Traduction :</strong> ${resultatTexte}</p>
+        </div>
+      `;
+    }
+
+    // Renvoi du résultat au routeur
+    event.source.postMessage({
+      type: "MS_RESPONSE",
+      requestId,
+      result: {
+        succes: true,
+        texteRedige: resultatTexte,
+        reponse: htmlReponse
+      }
+    }, event.origin);
+  });
+</script>
+</body>
+</html>
