@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Traitement de texte</title></head>
+<body>
+<!--
+  Neurone "traitement-texte" — 4 opérations déterministes :
+  format, grammaire (approximative), nettoyage, extraction d'entités.
+  Aucune IA : listes de mots + heuristiques de terminaisons + RegEx.
+-->
+<script>
+(function () {
+  "use strict";
+
+  // ---------------------------------------------------------------------
+  // 1. DÉTECTION DE FORMAT
+  // ---------------------------------------------------------------------
+  function detecterFormat(texte) {
+    const t = texte.trim();
+    try { JSON.parse(t); return "JSON valide"; } catch (e) { /* pas du JSON */ }
+
+    if (/^https?:\/\/\S+$/i.test(t)) return "URL";
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)) return "Adresse e-mail";
+    if (/<\/?[a-z][\s\S]*>/i.test(t)) return "HTML probable";
+    if (/^#{1,6}\s|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)|^```/m.test(t)) return "Markdown probable";
+
+    const lignes = t.split("\n").filter((l) => l.trim().length > 0);
+    if (lignes.length >= 2) {
+      const virgulesParLigne = lignes.map((l) => (l.match(/,/g) || []).length);
+      const pointsVirgulesParLigne = lignes.map((l) => (l.match(/;/g) || []).length);
+      const uniformeVirgule = virgulesParLigne.every((n) => n === virgulesParLigne[0] && n > 0);
+      const uniformePV = pointsVirgulesParLigne.every((n) => n === pointsVirgulesParLigne[0] && n > 0);
+      if (uniformeVirgule || uniformePV) return "CSV probable (colonnes régulières)";
+    }
+
+    return "Texte brut (aucun format structuré détecté)";
+  }
+
+  // ---------------------------------------------------------------------
+  // 2. ÉTIQUETAGE GRAMMATICAL APPROXIMATIF
+  //    Listes de mots-outils + heuristiques de terminaisons. Ce n'est PAS
+  //    un vrai analyseur linguistique — juste un rapprochement honnête.
+  // ---------------------------------------------------------------------
+  const ARTICLES = new Set(["le","la","les","un","une","des","du","au","aux"]);
+  const PRONOMS = new Set(["je","tu","il","elle","nous","vous","ils","elles","on","ce","cette","ces","mon","ma","mes","ton","ta","tes","son","sa","ses","leur","leurs"]);
+  const PREPOSITIONS = new Set(["à","de","dans","sur","sous","avec","sans","pour","par","chez","entre","vers","depuis","pendant","selon"]);
+  const CONJONCTIONS = new Set(["et","ou","mais","donc","or","ni","car","que","si","quand","comme","puisque","lorsque"]);
+  const VERBES_COURANTS = new Set([
+    "être","est","suis","es","sommes","êtes","sont","était","étaient",
+    "avoir","ai","as","a","avons","avez","ont","avait","avaient",
+    "faire","fais","fait","faisons","faites","font",
+    "aller","vais","vas","va","allons","allez","vont",
+    "dire","dis","dit","disons","dites","disent",
+    "pouvoir","peux","peut","pouvons","pouvez","peuvent",
+    "vouloir","veux","veut","voulons","voulez","veulent"
+  ]);
+
+  function classifierMot(mot) {
+    const m = mot.toLowerCase();
+    if (ARTICLES.has(m)) return "article";
+    if (PRONOMS.has(m)) return "pronom";
+    if (PREPOSITIONS.has(m)) return "préposition";
+    if (CONJONCTIONS.has(m)) return "conjonction";
+    if (VERBES_COURANTS.has(m)) return "verbe (courant)";
+    if (/(ons|ez|ent)$/.test(m) && m.length > 4) return "verbe probable (terminaison)";
+    if (/(tion|ment|eur|euse|ance|ence|isme)$/.test(m)) return "nom probable (terminaison)";
+    if (/(eux|euse|if|ive|al|ale|ique)$/.test(m)) return "adjectif probable (terminaison)";
+    return "non classé";
+  }
+
+  function analyserGrammaireLite(texte) {
+    const mots = texte.match(/[a-zàâçéèêëîïôûùüÿñæœ]+/gi) || [];
+    if (mots.length === 0) return "Aucun mot détecté à analyser.";
+    const lignes = mots.slice(0, 40).map((m) => m + " — " + classifierMot(m));
+    const suite = mots.length > 40 ? "\n… (" + (mots.length - 40) + " mot(s) supplémentaire(s) non affiché(s))" : "";
+    return "Étiquetage approximatif (heuristique, pas un vrai analyseur linguistique) :\n\n" + lignes.join("\n") + suite;
+  }
+
+  // ---------------------------------------------------------------------
+  // 3. NETTOYAGE / NORMALISATION
+  // ---------------------------------------------------------------------
+  function nettoyerTexte(texte) {
+    let t = texte.trim().replace(/\s+/g, " ");
+    t = t.replace(/\s+([.,!?;:])/g, "$1"); // espace avant ponctuation
+    t = t.replace(/([.,!?;:])(?=\S)/g, "$1 "); // espace après ponctuation si collée
+    // Majuscule en début de phrase
+    t = t.replace(/(^\s*\w|[.!?]\s+\w)/g, (m) => m.toUpperCase());
+    // Point final si absent
+    if (t && !/[.!?…]$/.test(t)) t += ".";
+    return t;
+  }
+
+  // ---------------------------------------------------------------------
+  // 4. EXTRACTION D'ENTITÉS
+  // ---------------------------------------------------------------------
+  function extraireEntites(texte) {
+    const emails = texte.match(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi) || [];
+    const urls = texte.match(/https?:\/\/[^\s)]+/gi) || [];
+    const dates = texte.match(/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/g) || [];
+    const telephones = texte.match(/\b0[1-9](?:[ .-]?\d{2}){4}\b/g) || [];
+
+    const sections = [];
+    if (emails.length) sections.push("E-mails : " + emails.join(", "));
+    if (urls.length) sections.push("URLs : " + urls.join(", "));
+    if (dates.length) sections.push("Dates : " + dates.join(", "));
+    if (telephones.length) sections.push("Téléphones : " + telephones.join(", "));
+
+    return sections.length ? sections.join("\n") : "Aucune entité reconnue (e-mail, URL, date, téléphone) dans ce texte.";
+  }
+
+  // ---------------------------------------------------------------------
+  // Orchestration locale : choisit l'opération selon le message
+  // ---------------------------------------------------------------------
+  function extraireTexteCible(prompt, declencheurs) {
+    let t = prompt.trim();
+    for (const d of declencheurs) {
+      const motif = new RegExp("^" + d + "\\s*:?\\s*", "i");
+      if (motif.test(t)) return t.replace(motif, "").trim();
+    }
+    return t;
+  }
+
+  async function traiterRequete(payload) {
+    const prompt = ((payload && (payload.texte || payload.query)) || "").trim();
+    if (!prompt) return { succes: false };
+
+    const p = prompt.toLowerCase();
+
+    if (/nettoie|normalise|corrige la ponctuation/.test(p)) {
+      const cible = extraireTexteCible(prompt, ["nettoie ce texte", "nettoie", "normalise ce texte", "normalise"]);
+      return { succes: true, texteRedige: "Texte nettoyé :\n\n" + nettoyerTexte(cible) };
+    }
+
+    if (/grammaire|nature des mots|analyse grammaticale/.test(p)) {
+      const cible = extraireTexteCible(prompt, ["analyse la grammaire de", "analyse grammaticale de", "nature des mots de", "analyse la grammaire"]);
+      return { succes: true, texteRedige: analyserGrammaireLite(cible) };
+    }
+
+    if (/extrai(s|re)|trouve les (emails?|liens?|dates?|urls?|num[ée]ros?)/.test(p)) {
+      const cible = extraireTexteCible(prompt, ["extrais les entités de", "extrais de", "extrais", "trouve les emails de", "trouve les liens de"]);
+      return { succes: true, texteRedige: extraireEntites(cible) };
+    }
+
+    if (/quel(?: est le)? format|type de texte|détecte le format/.test(p)) {
+      const cible = extraireTexteCible(prompt, ["quel est le format de", "quel format", "détecte le format de", "type de texte"]);
+      return { succes: true, texteRedige: "Format détecté : " + detecterFormat(cible) };
+    }
+
+    // Aucune sous-commande précise reconnue : aperçu combiné honnête
+    const resume =
+      "Format détecté : " + detecterFormat(prompt) + "\n\n" +
+      extraireEntites(prompt) + "\n\n" +
+      "Pour une analyse plus précise, précisez : \"nettoie ce texte : ...\", \"analyse la grammaire de : ...\", " +
+      "\"extrais les emails de : ...\", ou \"quel est le format de : ...\".";
+
+    return { succes: true, texteRedige: resume };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
