@@ -91,7 +91,7 @@
       "mots_cles": ["corrige ce texte long", "structure ce texte", "corrige l'orthographe de", "vérifie l'orthographe", "nettoie et structure"],
       "parametres_attendus": { "texte": "string (obligatoire) — le texte brut à traiter" },
       "format_reponse": { "succes": true, "texteRedige": "string" },
-      "timeout_ms": 20000
+      "timeout_ms": 35000
     },
     {
       "id": "traitement-texte",
