@@ -77,6 +77,10 @@ class Router {
     return this._distanceLevenshtein(motMessage, motCle) <= tolerance;
   }
 
+  _echapperRegex(texte) {
+    return texte.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
   /**
    * Évalue TOUS les services du registre face à la requête (pas seulement
    * le meilleur) et renvoie une liste triée par score, chacun avec un
@@ -95,7 +99,11 @@ class Router {
 
       for (const motCle of service.mots_cles) {
         const motCleNormalise = motCle.toLowerCase();
-        if (texteNormalise.includes(motCleNormalise)) {
+        // Limite de mot (\b) : un mot-clé ne compte que s'il apparaît comme
+        // un vrai mot séparé, pas comme fragment caché dans un mot plus
+        // long (ex: "recherche" ne doit pas matcher dans "larecherche...").
+        const motifExact = new RegExp("\\b" + this._echapperRegex(motCleNormalise) + "\\b", "i");
+        if (motifExact.test(texteNormalise)) {
           score += 1;
           matchExactTrouve = true;
           continue;
@@ -124,7 +132,8 @@ class Router {
       .map((chaine) => {
         let score = 0;
         for (const motCle of chaine.mots_cles || []) {
-          if (texteNormalise.includes(motCle.toLowerCase())) score += 1;
+          const motifExact = new RegExp("\\b" + this._echapperRegex(motCle.toLowerCase()) + "\\b", "i");
+          if (motifExact.test(texteNormalise)) score += 1;
         }
         return { chaine, score };
       })
@@ -444,8 +453,10 @@ class Router {
     const meilleur = candidats[0];
     const deuxieme = candidats[1];
 
-    // Ambiguïté : deux candidats à score très proche → incertitude assumée plutôt qu'un choix arbitraire
-    if (deuxieme && meilleur.score - deuxieme.score < 0.5 && meilleur.confiance !== "élevée") {
+    // Ambiguïté : deux candidats à score très proche (y compris une égalité
+    // parfaite entre deux matches exacts) → incertitude assumée plutôt
+    // qu'un choix arbitraire basé sur l'ordre du registre.
+    if (deuxieme && meilleur.score - deuxieme.score < 0.5) {
       this._log("CLASSIFICATION", {
         prompt, decision: "incertain",
         candidats: [meilleur.service.id, deuxieme.service.id]
@@ -520,6 +531,11 @@ class Router {
         return { texte: prompt, longueur_max: 3 };
       case "horodateur":
         return { format: "long" };
+      case "export-pdf": {
+        const explicite = prompt.match(/exporte\s+en\s+pdf\s*:?\s*(.+)/i) || prompt.match(/g[ée]n[èe]re\s+un\s+pdf\s*:?\s*(.+)/i);
+        const texte = explicite ? explicite[1].trim() : (this.dernierTexteRedige || "");
+        return { texte };
+      }
       default:
         return { texte: prompt, query: prompt };
     }
@@ -648,12 +664,16 @@ class Router {
 
     if (classification.type === "sous_taches") {
       this.dernierEchange = { prompt, serviceId: null };
-      return await this.executerSousTaches(classification.segments);
+      const resultatSousTaches = await this.executerSousTaches(classification.segments);
+      if (resultatSousTaches && resultatSousTaches.texteRedige) this.dernierTexteRedige = resultatSousTaches.texteRedige;
+      return resultatSousTaches;
     }
 
     if (classification.type === "chaine") {
       this.dernierEchange = { prompt, serviceId: "chaine:" + classification.chaine.id };
-      return await this.executerChaine(classification.chaine, prompt);
+      const resultatChaine = await this.executerChaine(classification.chaine, prompt);
+      if (resultatChaine && resultatChaine.texteRedige) this.dernierTexteRedige = resultatChaine.texteRedige;
+      return resultatChaine;
     }
 
     // type === "service"
@@ -665,6 +685,7 @@ class Router {
       const resultat = await this.appelerService(service, payload);
       if (resultat && resultat.succes !== false) {
         this.enregistrerAssociation(prompt, service.id);
+        if (resultat.texteRedige) this.dernierTexteRedige = resultat.texteRedige;
       }
       if (containerElement && resultat.reponse) {
         containerElement.innerHTML = resultat.reponse;
