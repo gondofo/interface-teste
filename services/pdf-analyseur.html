@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Analyseur PDF</title></head>
+<body>
+<!--
+  Neurone "pdf-analyseur" — extrait le texte d'un PDF via PDF.js, 100%
+  navigateur. Le fichier brut n'est jamais conservé au-delà de cette
+  requête : seul le texte extrait est renvoyé, l'iframe est détruite juste après.
+-->
+<script type="module">
+  import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.mjs";
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs";
+
+  const MESSAGE_ECHEC = "Je n'ai pas pu lire ce fichier PDF (format invalide, protégé, ou trop lourd).";
+
+  async function traiterRequete(payload) {
+    const fichier = payload && payload.fichier;
+    if (!fichier) return { succes: false };
+
+    try {
+      const arrayBuffer = await fichier.arrayBuffer();
+      const doc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const nbPagesTotal = doc.numPages;
+      const nbPagesLues = Math.min(nbPagesTotal, 20); // limite raisonnable, appareil faible
+
+      let texteComplet = "";
+      for (let i = 1; i <= nbPagesLues; i++) {
+        const page = await doc.getPage(i);
+        const contenu = await page.getTextContent();
+        texteComplet += contenu.items.map((it) => it.str).join(" ") + "\n\n";
+      }
+      texteComplet = texteComplet.trim();
+
+      if (!texteComplet) {
+        return { succes: true, texteRedige: "Ce PDF ne contient pas de texte extractible (probablement un document scanné/image)." };
+      }
+
+      const troncature = nbPagesTotal > nbPagesLues ? ` (limité aux ${nbPagesLues} premières sur ${nbPagesTotal})` : "";
+      return {
+        succes: true,
+        texteRedige: `Texte extrait${troncature} :\n\n` + texteComplet.slice(0, 4000) + (texteComplet.length > 4000 ? "\n… (tronqué)" : "")
+      };
+    } catch (erreur) {
+      console.error("[pdf-analyseur]", erreur);
+      return { succes: true, texteRedige: MESSAGE_ECHEC };
+    }
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    }).catch(function (erreur) {
+      console.error("[pdf-analyseur]", erreur);
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result: { succes: true, texteRedige: MESSAGE_ECHEC } }, "*");
+    });
+  });
+</script>
+</body>
+</html>

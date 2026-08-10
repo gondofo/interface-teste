@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Analyseur Excel/CSV</title></head>
+<body>
+<!--
+  Neurone "excel-analyseur" — lit un fichier Excel/CSV via SheetJS, 100%
+  navigateur. Même principe de purge que pdf-analyseur : rien de brut
+  n'est conservé au-delà de cette requête.
+-->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  const MESSAGE_ECHEC = "Je n'ai pas pu lire ce fichier (format Excel/CSV invalide).";
+
+  async function traiterRequete(payload) {
+    const fichier = payload && payload.fichier;
+    if (!fichier) return { succes: false };
+
+    try {
+      const arrayBuffer = await fichier.arrayBuffer();
+      const classeur = XLSX.read(arrayBuffer, { type: "array" });
+      const premiereFeuille = classeur.SheetNames[0];
+      const feuille = classeur.Sheets[premiereFeuille];
+      const csv = XLSX.utils.sheet_to_csv(feuille);
+      const lignes = csv.split("\n").filter((l) => l.trim().length > 0);
+
+      if (lignes.length === 0) {
+        return { succes: true, texteRedige: "Ce fichier ne contient aucune donnée exploitable." };
+      }
+
+      const apercu = lignes.slice(0, 30).join("\n");
+      const troncature = lignes.length > 30 ? "\n… (" + (lignes.length - 30) + " ligne(s) supplémentaire(s) non affichée(s))" : "";
+
+      return {
+        succes: true,
+        texteRedige:
+          `Feuille "${premiereFeuille}" — ${lignes.length} ligne(s), ${classeur.SheetNames.length} feuille(s) au total :\n\n` +
+          apercu + troncature
+      };
+    } catch (erreur) {
+      console.error("[excel-analyseur]", erreur);
+      return { succes: true, texteRedige: MESSAGE_ECHEC };
+    }
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
