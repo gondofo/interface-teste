@@ -74,6 +74,16 @@
       "timeout_ms": 5000
     },
     {
+      "id": "export-pdf",
+      "nom": "Export PDF",
+      "fonction": "Génère et télécharge un fichier PDF à partir d'un texte fourni, ou de la dernière réponse produite si rien n'est précisé. Déclenché uniquement sur demande explicite.",
+      "url": "./services/export-pdf.html",
+      "mots_cles": ["exporte en pdf", "télécharge en pdf", "génère un pdf", "export pdf", "en pdf"],
+      "parametres_attendus": { "texte": "string (optionnel) — contenu à exporter, sinon la dernière réponse est réutilisée" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 8000
+    },
+    {
       "id": "traitement-texte",
       "nom": "Traitement de texte (format, grammaire, nettoyage, entités)",
       "fonction": "Détecte le format d'un texte (JSON/CSV/Markdown/HTML), étiquette grammaticalement de façon approximative, nettoie/normalise, ou extrait emails/URLs/dates/téléphones.",
@@ -203,7 +213,7 @@
       "nom": "Calculatrice arithmétique",
       "fonction": "Évalue une expression mathématique simple envoyée en texte (addition, soustraction, multiplication, division).",
       "url": "./services/calculatrice.html",
-      "mots_cles": ["calcule", "calcul", "combien fait", "additionne", "multiplie", "+", "-", "*", "/"],
+      "mots_cles": ["calcule", "calcul", "combien fait", "additionne", "multiplie", "divise", "soustrais"],
       "parametres_attendus": {
         "expression": "string (obligatoire) — expression mathématique, ex: '12 * (4 + 2)'"
       },
