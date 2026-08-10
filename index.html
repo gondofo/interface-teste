@@ -379,8 +379,71 @@
     });
 
     boutonPlus.addEventListener('click', () => {
-      console.info('Ajout de fichier/photo : fonctionnalité à venir.');
+      inputFichier.value = '';
+      inputFichier.click();
     });
+
+    const inputFichier = document.createElement('input');
+    inputFichier.type = 'file';
+    inputFichier.accept = '.pdf,.xlsx,.xls,.csv';
+    inputFichier.style.display = 'none';
+    document.body.appendChild(inputFichier);
+
+    // Nettoyage automatique après 300s d'inactivité : révoque toute URL
+    // Blob créée entre-temps (prévu pour de futurs aperçus de fichiers ;
+    // ne fait rien de destructeur si aucune URL n'a été créée).
+    let urlsActives = [];
+    let minuteurInactivite = null;
+    function reinitialiserInactivite() {
+      clearTimeout(minuteurInactivite);
+      minuteurInactivite = setTimeout(() => {
+        urlsActives.forEach((url) => URL.revokeObjectURL(url));
+        urlsActives = [];
+        console.debug('[purge] Blob URLs nettoyées après 300s d\'inactivité.');
+      }, 300000);
+    }
+    ['mousemove', 'keydown', 'touchstart'].forEach((evt) => document.addEventListener(evt, reinitialiserInactivite));
+    reinitialiserInactivite();
+
+    inputFichier.addEventListener('change', async () => {
+      const fichier = inputFichier.files[0];
+      if (!fichier) return;
+      await traiterFichier(fichier);
+    });
+
+    async function traiterFichier(fichier) {
+      ajouterMessage('utilisateur', '📎 ' + echapperHTML(fichier.name));
+      btn.disabled = true;
+
+      const messageAttente = ajouterMessage('systeme', '', { etat: 'attente' });
+      demarrerJournal(messageAttente);
+      ajouterLigneJournal('Analyse du fichier : ' + fichier.name + '…');
+
+      const extension = '.' + (fichier.name.split('.').pop() || '').toLowerCase();
+      const service = (router.registry && router.registry.services || []).find(
+        (s) => (s.extensions_acceptees || []).includes(extension)
+      );
+
+      if (!service) {
+        terminerDerniereLigne(false);
+        finaliserJournalEtReponse(messageAttente, `<p>Aucun neurone ne sait traiter les fichiers ${echapperHTML(extension)} pour l'instant.</p>`);
+        btn.disabled = false;
+        return;
+      }
+
+      ajouterLigneJournal('Exécution : ' + (service.nom || service.id) + '…');
+      try {
+        const resultat = await router.appelerService(service, { fichier });
+        terminerDerniereLigne(resultat && resultat.succes !== false);
+        const formatage = formaterReponseAssistant(resultat);
+        finaliserJournalEtReponse(messageAttente, formatage.html);
+      } catch (erreur) {
+        terminerDerniereLigne(false);
+        finaliserJournalEtReponse(messageAttente, `<p>Une erreur est survenue lors du traitement du fichier.</p>`);
+      } finally {
+        btn.disabled = false;
+      }
+    }
 
     function defilerVersLeBas() {
       filEl.scrollTop = filEl.scrollHeight;
