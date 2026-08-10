@@ -479,7 +479,7 @@ class Router {
    * une seule tâche (repli sûr, pas de faux découpage).
    */
   diviserEnSousTaches(prompt) {
-    const segments = prompt.split(/\s+\bet\b\s+|;\s*/i).map((s) => s.trim()).filter(Boolean);
+    const segments = prompt.split(/\s+\b(?:et|puis|ensuite)\b\s+|;\s*/i).map((s) => s.trim()).filter(Boolean);
     if (segments.length < 2) return null;
     const evaluations = segments.map((seg) => this.evaluerCandidats(seg));
     const tousValides = evaluations.every((ev) => ev.length > 0 && ev[0].score >= 1);
@@ -539,6 +539,11 @@ class Router {
         const explicite = prompt.match(/exporte\s+en\s+pdf\s*:?\s*(.+)/i) || prompt.match(/g[ée]n[èe]re\s+un\s+pdf\s*:?\s*(.+)/i);
         const texte = explicite ? explicite[1].trim() : (this.dernierTexteRedige || "");
         return { texte };
+      }
+      case "correcteur-texte": {
+        const motif = /^(?:corrige ce texte long|structure ce texte|corrige l'orthographe de|v[ée]rifie l'orthographe(?: de)?|nettoie et structure)\s*:?\s*(.+)$/i;
+        const match = prompt.match(motif);
+        return { texte: match ? match[1].trim() : prompt };
       }
       default:
         return { texte: prompt, query: prompt };
