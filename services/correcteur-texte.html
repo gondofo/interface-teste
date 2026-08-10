@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Correcteur de texte</title></head>
+<body>
+<!--
+  Neurone "correcteur-texte" — orchestre correcteur-texte-worker.js dans
+  un Web Worker dédié (créé une fois, réutilisé ensuite), pour ne jamais
+  bloquer l'iframe même sur un texte volumineux. Protocole MS_REQUEST/
+  MS_RESPONSE inchangé côté interface mère.
+-->
+<script>
+(function () {
+  "use strict";
+
+  let worker = null;
+  let compteurRequetes = 0;
+
+  function obtenirWorker() {
+    if (!worker) {
+      worker = new Worker("./correcteur-texte-worker.js");
+    }
+    return worker;
+  }
+
+  function traiterAvecWorker(texte, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const w = obtenirWorker();
+      const id = ++compteurRequetes;
+      const minuteur = setTimeout(() => {
+        w.removeEventListener("message", ecouteur);
+        reject(new Error("delai_depasse"));
+      }, timeoutMs);
+
+      function ecouteur(evenement) {
+        const data = evenement.data;
+        if (data.id !== id) return;
+        if (data.type === "RESULTAT") {
+          clearTimeout(minuteur);
+          w.removeEventListener("message", ecouteur);
+          resolve(data.resultat);
+        } else if (data.type === "ERREUR") {
+          clearTimeout(minuteur);
+          w.removeEventListener("message", ecouteur);
+          reject(new Error(data.message));
+        }
+        // type "PROGRES" : ignoré ici (pas d'UI visible dans ce neurone),
+        // mais disponible si on veut le relayer plus tard.
+      }
+
+      w.addEventListener("message", ecouteur);
+      w.postMessage({ texte, id });
+    });
+  }
+
+  function formaterReponse(resultat) {
+    const lignesSuggestions = resultat.suggestions.length > 0
+      ? "\n\nSuggestions orthographiques (dictionnaire compact, non exhaustif) :\n" +
+        resultat.suggestions.map((s) => `- "${s.mot}" → peut-être "${s.suggestion}" ?`).join("\n")
+      : "";
+
+    return (
+      `Texte structuré (${resultat.nbBlocs} bloc(s), ${resultat.nbPhrases} phrase(s) détectée(s)) :\n\n` +
+      resultat.texteStructure +
+      lignesSuggestions
+    );
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && payload.texte) || "").trim();
+    if (!texte) return { succes: false };
+
+    try {
+      const resultat = await traiterAvecWorker(texte, 15000);
+      return { succes: true, texteRedige: formaterReponse(resultat) };
+    } catch (erreur) {
+      console.error("[correcteur-texte]", erreur);
+      return {
+        succes: true,
+        texteRedige: "Le traitement de ce texte a échoué ou pris trop de temps. Réessayez avec un texte plus court."
+      };
+    }
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
