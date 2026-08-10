@@ -17,7 +17,7 @@
 
   function obtenirWorker() {
     if (!worker) {
-      worker = new Worker("./correcteur-texte-worker.js");
+      worker = new Worker("./correcteur-texte-worker.js", { type: "module" });
     }
     return worker;
   }
@@ -70,7 +70,7 @@
     if (!texte) return { succes: false };
 
     try {
-      const resultat = await traiterAvecWorker(texte, 15000);
+      const resultat = await traiterAvecWorker(texte, 30000);
       return { succes: true, texteRedige: formaterReponse(resultat) };
     } catch (erreur) {
       console.error("[correcteur-texte]", erreur);
