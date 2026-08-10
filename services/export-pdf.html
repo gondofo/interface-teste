@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Export PDF</title></head>
+<body>
+<!--
+  Neurone "export-pdf" — génère et télécharge un PDF via jsPDF, 100%
+  navigateur. Déclenché sur demande explicite, jamais automatiquement.
+-->
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  const MESSAGE_VIDE =
+    "Il n'y a rien à exporter pour l'instant. Précisez le texte directement " +
+    "(\"exporte en pdf : votre texte\"), ou faites d'abord une demande dont la réponse pourra être exportée.";
+  const MESSAGE_ECHEC = "Je n'ai pas pu générer le PDF.";
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && payload.texte) || "").trim();
+    if (!texte) return { succes: true, texteRedige: MESSAGE_VIDE };
+
+    try {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      const margeGauche = 20, margeHaut = 25, largeurUtile = 170, hauteurLigne = 6, basPage = 280;
+
+      doc.setFontSize(11);
+      const lignes = doc.splitTextToSize(texte, largeurUtile);
+      let y = margeHaut;
+
+      lignes.forEach((ligne) => {
+        if (y > basPage) { doc.addPage(); y = margeHaut; }
+        doc.text(ligne, margeGauche, y);
+        y += hauteurLigne;
+      });
+
+      const nomFichier = "export-" + Date.now() + ".pdf";
+      doc.save(nomFichier);
+
+      return { succes: true, texteRedige: "PDF téléchargé : " + nomFichier };
+    } catch (erreur) {
+      console.error("[export-pdf]", erreur);
+      return { succes: true, texteRedige: MESSAGE_ECHEC };
+    }
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
