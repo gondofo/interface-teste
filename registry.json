@@ -20,6 +20,30 @@
   ],
   "services": [
     {
+      "id": "pdf-analyseur",
+      "nom": "Analyseur PDF",
+      "fonction": "Extrait le texte d'un fichier PDF (jusqu'à 20 pages), déclenché via le bouton d'ajout de fichier.",
+      "url": "./services/pdf-analyseur.html",
+      "type_entree": "fichier",
+      "extensions_acceptees": [".pdf"],
+      "mots_cles": [],
+      "parametres_attendus": { "fichier": "File — le fichier PDF sélectionné" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 20000
+    },
+    {
+      "id": "excel-analyseur",
+      "nom": "Analyseur Excel/CSV",
+      "fonction": "Lit un fichier Excel ou CSV et affiche un aperçu de son contenu, déclenché via le bouton d'ajout de fichier.",
+      "url": "./services/excel-analyseur.html",
+      "type_entree": "fichier",
+      "extensions_acceptees": [".xlsx", ".xls", ".csv"],
+      "mots_cles": [],
+      "parametres_attendus": { "fichier": "File — le fichier sélectionné" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 15000
+    },
+    {
       "id": "generateur-uuid",
       "nom": "Générateur d'identifiant unique (UUID)",
       "fonction": "Génère un ou plusieurs identifiants uniques (UUID v4).",
