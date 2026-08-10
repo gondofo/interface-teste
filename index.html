@@ -232,7 +232,25 @@
   .suggestion-piste:hover{ background: var(--line); border-color: var(--accent-dim); }
   .suggestion-piste:active{ transform: scale(.97); }
 
-  /* Points de suspension "en train d'écrire" */
+  .fichier-telechargement{
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+  .fichier-telechargement a{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--accent);
+    text-decoration: none;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 7px 14px;
+    transition: background .15s, border-color .15s;
+  }
+  .fichier-telechargement a:hover{ background: var(--line); border-color: var(--accent-dim); }
   .points-attente{ display:inline-flex; gap:3px; }
   .points-attente span{
     width:5px; height:5px; border-radius:50%;
@@ -696,7 +714,22 @@
         }
       }
 
-      return { html: paragraphes + sourcesHtml };
+      // Fichier à télécharger (ex: export PDF) : jamais de téléchargement
+      // automatique — un lien cliquable, c'est l'utilisateur qui décide.
+      let fichierHtml = '';
+      if (resultat.fichier && resultat.fichier.blob) {
+        const url = URL.createObjectURL(resultat.fichier.blob);
+        urlsActives.push(url);
+        fichierHtml = `
+          <div class="fichier-telechargement">
+            <a href="${echapperHTML(url)}" download="${echapperHTML(resultat.fichier.nom || 'fichier')}">
+              ⬇ Télécharger ${echapperHTML(resultat.fichier.nom || 'le fichier')}
+            </a>
+          </div>
+        `;
+      }
+
+      return { html: paragraphes + sourcesHtml + fichierHtml };
     }
 
     function echapperHTML(str) {
