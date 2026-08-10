@@ -93,28 +93,32 @@ class Router {
     const motsMessage = texteNormalise.match(/[a-zàâçéèêëîïôûùüÿñæœ']+/g) || [];
 
     const candidats = this.registry.services.map((service) => {
-      let score = 0;
-      let matchExactTrouve = false;
-      let matchApproxTrouve = false;
+      let scoreExact = 0;
+      let scoreApprox = 0;
 
       for (const motCle of service.mots_cles) {
         const motCleNormalise = motCle.toLowerCase();
-        // Limite de mot (\b) : un mot-clé ne compte que s'il apparaît comme
-        // un vrai mot séparé, pas comme fragment caché dans un mot plus
-        // long (ex: "recherche" ne doit pas matcher dans "larecherche...").
         const motifExact = new RegExp("\\b" + this._echapperRegex(motCleNormalise) + "\\b", "i");
         if (motifExact.test(texteNormalise)) {
-          score += 1;
-          matchExactTrouve = true;
+          scoreExact += 1;
           continue;
         }
         if (!motCleNormalise.includes(" ") && motCleNormalise.length >= 3) {
           const approx = motsMessage.some((m) => this._motsProches(m, motCleNormalise));
-          if (approx) { score += 0.5; matchApproxTrouve = true; }
+          if (approx) scoreApprox += 1;
         }
       }
 
-      const confiance = matchExactTrouve ? "élevée" : matchApproxTrouve ? "moyenne" : "aucune";
+      // Un match exact doit TOUJOURS dominer, quel que soit le nombre de
+      // matches approximatifs accumulés — sinon, sur un texte long, le
+      // bruit flou (coïncidences orthographiques sans rapport) peut
+      // dépasser une vraie correspondance exacte unique. Le flou ne sert
+      // donc qu'à départager ou à proposer un candidat quand aucun match
+      // exact n'existe, jamais à l'emporter sur un match exact.
+      const contributionApprox = Math.min(scoreApprox, 1) * 0.4;
+      const score = scoreExact + contributionApprox;
+      const confiance = scoreExact > 0 ? "élevée" : scoreApprox > 0 ? "moyenne" : "aucune";
+
       return { service, score, confiance };
     });
 
