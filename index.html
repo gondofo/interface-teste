@@ -8,19 +8,19 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:          #08090c;
-    --panel:       #14181f;
-    --panel-2:     #1a1f28;
-    --bulle-systeme: #14181f;
-    --bulle-user:    #7c9cff;
-    --line:        #212632;
-    --text:        #e7e9ee;
-    --text-user:     #08090c;
-    --muted:       #6b7280;
-    --accent:      #7c9cff;
-    --accent-dim:    #35406e;
-    --ok:          #34d399;
-    --err:         #f87171;
+    --bg:          #121212;
+    --panel:       #1a1a1a;
+    --panel-2:     #202020;
+    --bulle-systeme: #1a1a1a;
+    --bulle-user:    #eae6db;
+    --line:        #2a2a2a;
+    --text:        #ededed;
+    --text-user:     #121212;
+    --muted:       #8a8a85;
+    --accent:      #c9a24b;
+    --accent-dim:    #5c4c28;
+    --ok:          #7fae8e;
+    --err:         #c07561;
     --mono: 'JetBrains Mono', ui-monospace, monospace;
     --sans: 'Space Grotesk', system-ui, sans-serif;
     --largeur-max: 720px;
@@ -95,10 +95,10 @@
   .fil-interieur{
     width:100%;
     max-width:var(--largeur-max);
-    padding:28px 20px 24px;
+    padding:40px 24px 32px;
     display:flex;
     flex-direction:column;
-    gap:14px;
+    gap:20px;
   }
 
   .accueil{
@@ -125,23 +125,23 @@
   .message.systeme{ align-self:flex-start; align-items:flex-start; }
 
   .bulle{
-    padding:14px 18px;
-    border-radius:16px;
+    padding:16px 20px;
+    border-radius:10px;
     font-size:14.5px;
-    line-height:1.6;
+    line-height:1.7;
     word-break:break-word;
   }
   .message.utilisateur .bulle{
     background:var(--bulle-user);
     color:var(--text-user);
-    border-bottom-right-radius:4px;
+    border-bottom-right-radius:3px;
     white-space:pre-wrap;
   }
   .message.systeme .bulle{
     background:var(--bulle-systeme);
     border:1px solid var(--line);
     color:var(--text);
-    border-bottom-left-radius:4px;
+    border-bottom-left-radius:3px;
   }
   .message.systeme .bulle.attente{
     color:var(--muted);
@@ -261,8 +261,8 @@
     gap:8px;
     background:var(--panel);
     border:1px solid var(--line);
-    border-radius:22px;
-    padding:6px 6px 6px 8px;
+    border-radius:12px;
+    padding:8px 8px 8px 10px;
     transition:border-color .2s;
   }
   #formPrompt:focus-within{ border-color:var(--accent-dim); }
@@ -304,10 +304,10 @@
   button.envoyer{
     flex:0 0 auto;
     background:var(--accent);
-    color:#08090c;
+    color:#121212;
     border:none;
-    border-radius:18px;
-    padding:9px 18px;
+    border-radius:9px;
+    padding:10px 20px;
     font-family:var(--sans);
     font-weight:600;
     font-size:13.5px;
