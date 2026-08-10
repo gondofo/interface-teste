@@ -36,9 +36,16 @@
       });
 
       const nomFichier = "export-" + Date.now() + ".pdf";
-      doc.save(nomFichier);
+      const blobPdf = doc.output("blob");
 
-      return { succes: true, texteRedige: "PDF téléchargé : " + nomFichier };
+      // Règle absolue : aucun téléchargement automatique. On renvoie le
+      // fichier à l'interface mère, qui affichera un lien cliquable —
+      // c'est l'utilisateur qui déclenche volontairement le téléchargement.
+      return {
+        succes: true,
+        texteRedige: "PDF prêt (" + lignes.length + " ligne(s)) — cliquez sur le lien ci-dessous pour le télécharger.",
+        fichier: { blob: blobPdf, nom: nomFichier, type: "application/pdf" }
+      };
     } catch (erreur) {
       console.error("[export-pdf]", erreur);
       return { succes: true, texteRedige: MESSAGE_ECHEC };
