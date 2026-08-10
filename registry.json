@@ -74,6 +74,20 @@
       "timeout_ms": 5000
     },
     {
+      "id": "traitement-texte",
+      "nom": "Traitement de texte (format, grammaire, nettoyage, entités)",
+      "fonction": "Détecte le format d'un texte (JSON/CSV/Markdown/HTML), étiquette grammaticalement de façon approximative, nettoie/normalise, ou extrait emails/URLs/dates/téléphones.",
+      "url": "./services/traitement-texte.html",
+      "mots_cles": [
+        "nettoie ce texte", "normalise ce texte", "analyse la grammaire", "analyse grammaticale",
+        "nature des mots", "extrais les emails", "extrais les liens", "extrais les dates",
+        "quel est le format", "quel format", "détecte le format", "type de texte", "traitement de texte"
+      ],
+      "parametres_attendus": { "texte": "string (obligatoire) — le texte et la commande à traiter" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
       "id": "aide",
       "nom": "Aide (liste des capacités)",
       "fonction": "Liste dynamiquement, à partir du registre, tout ce que l'interface sait faire actuellement.",
