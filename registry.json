@@ -84,6 +84,16 @@
       "timeout_ms": 8000
     },
     {
+      "id": "correcteur-texte",
+      "nom": "Correcteur de texte (pipeline déterministe)",
+      "fonction": "Nettoie, segmente et structure un texte volumineux (normalisation, découpage en phrases, typographie française, détection paragraphes/listes/titres, suggestions orthographiques). 100% déterministe, tourne dans un Web Worker pour ne pas bloquer l'interface.",
+      "url": "./services/correcteur-texte.html",
+      "mots_cles": ["corrige ce texte long", "structure ce texte", "corrige l'orthographe de", "vérifie l'orthographe", "nettoie et structure"],
+      "parametres_attendus": { "texte": "string (obligatoire) — le texte brut à traiter" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 20000
+    },
+    {
       "id": "traitement-texte",
       "nom": "Traitement de texte (format, grammaire, nettoyage, entités)",
       "fonction": "Détecte le format d'un texte (JSON/CSV/Markdown/HTML), étiquette grammaticalement de façon approximative, nettoie/normalise, ou extrait emails/URLs/dates/téléphones.",
