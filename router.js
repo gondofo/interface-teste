@@ -1,6 +1,6 @@
 /**
  * ==========================================================================
- *  ROUTER.JS — Orchestrateur symbolique de l'Interface Mère (Multitâche)
+ *  ROUTER.JS — Orchestrateur symbolique de l'Interface Mère
  * ==========================================================================
  *  Aucun LLM, aucune IA générative : uniquement des règles, des scores de
  *  correspondance, une mémoire locale d'associations apprises, et un
@@ -211,15 +211,23 @@ class Router {
   }
 
   // ========================================================================
-  // 4. MÉMOIRE — associations apprises, jamais de modification du code
+  // 4. MÉMOIRE — organisée en 3 catégories, jamais de modification du code.
+  //    Une association n'est "apprise" (utilisée automatiquement) qu'après
+  //    2 occurrences confirmées, ou immédiatement si enseignée/corrigée
+  //    explicitement par l'utilisateur.
   // ========================================================================
 
   _chargerMemoire() {
     try {
       const brut = localStorage.getItem(this.memoireCle);
-      return brut ? JSON.parse(brut) : {};
+      const donnees = brut ? JSON.parse(brut) : {};
+      return {
+        associations: donnees.associations || {},
+        corrections: donnees.corrections || [],
+        besoinsNonCombles: donnees.besoinsNonCombles || {}
+      };
     } catch (erreur) {
-      return {};
+      return { associations: {}, corrections: [], besoinsNonCombles: {} };
     }
   }
 
@@ -237,20 +245,36 @@ class Router {
 
   rechercherMemoire(prompt) {
     const cle = this._normaliserPourMemoire(prompt);
-    const entree = this.memoire[cle];
+    const entree = this.memoire.associations[cle];
     if (!entree) return null;
+    // Seuil de répétition : une association organique (non confirmée
+    // explicitement) doit être revue au moins 2 fois avant d'être utilisée
+    // seule — évite d'apprendre sur un simple hasard de score.
+    if (!entree.confirmee && entree.occurrences < 2) return null;
     const service = this.registry.services.find((s) => s.id === entree.serviceId);
     if (!service) return null; // le neurone mémorisé a été retiré depuis
     return { service, occurrences: entree.occurrences };
   }
 
-  enregistrerAssociation(prompt, serviceId) {
+  enregistrerAssociation(prompt, serviceId, confirmee = false) {
     const cle = this._normaliserPourMemoire(prompt);
-    const existant = this.memoire[cle];
-    this.memoire[cle] = {
+    const existant = this.memoire.associations[cle];
+    this.memoire.associations[cle] = {
       serviceId,
       occurrences: existant ? existant.occurrences + 1 : 1,
+      confirmee: confirmee || (existant && existant.confirmee) || false,
       derniereFois: new Date().toISOString()
+    };
+    this._sauvegarderMemoire();
+  }
+
+  enregistrerBesoinNonComble(motsSignificatifs, exempleTexte) {
+    const cle = Array.from(new Set(motsSignificatifs)).sort().join(" ");
+    if (!cle) return;
+    const existant = this.memoire.besoinsNonCombles[cle];
+    this.memoire.besoinsNonCombles[cle] = {
+      occurrences: existant ? existant.occurrences + 1 : 1,
+      dernierExemple: exempleTexte
     };
     this._sauvegarderMemoire();
   }
@@ -274,7 +298,7 @@ class Router {
       };
     }
 
-    this.enregistrerAssociation(phrase, service.id);
+    this.enregistrerAssociation(phrase, service.id, true);
     return {
       succes: true,
       interne: true,
@@ -284,21 +308,79 @@ class Router {
 
   traiterCommandeOubli(prompt) {
     if (/^efface (la |ta )?m[ée]moire$/i.test(prompt.trim())) {
-      this.memoire = {};
+      this.memoire = { associations: {}, corrections: [], besoinsNonCombles: {} };
       this._sauvegarderMemoire();
-      return { succes: true, interne: true, reponse: "<p>Toute la mémoire d'associations apprises a été effacée.</p>" };
+      return { succes: true, interne: true, reponse: "<p>Toute la mémoire (associations, corrections, besoins) a été effacée.</p>" };
     }
     const match = prompt.match(/^oublie\s*:?\s*"?(.+?)"?$/i);
     if (match) {
       const cle = this._normaliserPourMemoire(match[1]);
-      if (this.memoire[cle]) {
-        delete this.memoire[cle];
+      if (this.memoire.associations[cle]) {
+        delete this.memoire.associations[cle];
         this._sauvegarderMemoire();
         return { succes: true, interne: true, reponse: `<p>Association oubliée pour "${this._echapper(match[1].trim())}".</p>` };
       }
       return { succes: true, interne: true, reponse: `<p>Aucune association mémorisée ne correspond à "${this._echapper(match[1].trim())}".</p>` };
     }
     return null;
+  }
+
+  /**
+   * Commande de correction : après une mauvaise réponse, ex. "non, utilise
+   * convertisseur" — s'applique au DERNIER échange (this.dernierEchange).
+   * Enregistre le contexte complet de la correction (pas juste le résultat)
+   * et rend l'association immédiatement fiable, sans attendre 2 répétitions.
+   */
+  traiterCommandeCorrection(prompt) {
+    if (!this.dernierEchange) return null;
+    const match = prompt.match(/^(?:non|c'est faux|c'est pas ça|mauvaise réponse)[,.]?\s*(?:utilise|c'est|essaie|il fallait utiliser)\s+(.+)$/i);
+    if (!match) return null;
+
+    const cibleTexte = match[1].trim().toLowerCase();
+    const nouveauService = this.registry.services.find(
+      (s) => s.id.toLowerCase() === cibleTexte || (s.nom || "").toLowerCase().includes(cibleTexte)
+    );
+    if (!nouveauService) {
+      return {
+        succes: true, interne: true,
+        reponse: `<p>Je ne trouve aucun neurone correspondant à "${this._echapper(cibleTexte)}" — correction non enregistrée.</p>`
+      };
+    }
+
+    this.memoire.corrections.push({
+      demandeOriginale: this.dernierEchange.prompt,
+      interpretationInitiale: this.dernierEchange.serviceId || "(aucune)",
+      correction: prompt,
+      nouvelleInterpretation: nouveauService.id,
+      date: new Date().toISOString()
+    });
+    if (this.memoire.corrections.length > 200) this.memoire.corrections.shift();
+
+    this.enregistrerAssociation(this.dernierEchange.prompt, nouveauService.id, true);
+    this._sauvegarderMemoire();
+
+    return {
+      succes: true, interne: true,
+      reponse: `<p>Correction enregistrée : la prochaine fois, "${this._echapper(this.dernierEchange.prompt)}" utilisera <strong>${this._echapper(nouveauService.nom || nouveauService.id)}</strong>.</p>`
+    };
+  }
+
+  /** Commande de consultation : "liste des besoins" / "capacités manquantes" */
+  traiterCommandeBesoins(prompt) {
+    if (!/^(liste des besoins|capacit[ée]s manquantes|besoins non combl[ée]s)/i.test(prompt.trim())) return null;
+
+    const besoins = Object.entries(this.memoire.besoinsNonCombles).sort((a, b) => b[1].occurrences - a[1].occurrences).slice(0, 10);
+    if (besoins.length === 0) {
+      return { succes: true, interne: true, reponse: "<p>Aucun besoin non comblé enregistré pour l'instant.</p>" };
+    }
+    const lignes = besoins.map(([cle, info], i) =>
+      (i + 1) + ". " + this._echapper(cle || "(demande sans mot reconnu)") +
+      " — rencontré " + info.occurrences + " fois (dernier exemple : \"" + this._echapper(info.dernierExemple) + "\")"
+    );
+    return {
+      succes: true, interne: true,
+      reponse: "<p><strong>CAPACITÉS MANQUANTES</strong></p><p>" + lignes.join("<br>") + "</p>"
+    };
   }
 
   _echapper(str) {
@@ -313,11 +395,24 @@ class Router {
   // ========================================================================
 
   classifierRequete(prompt) {
-    // Commandes d'enseignement/oubli traitées en priorité, avant toute classification
+    // Commandes spéciales traitées en priorité, avant toute classification
     const enseignement = this.traiterCommandeEnseignement(prompt);
     if (enseignement) return { type: "reponse_directe", reponse: enseignement };
     const oubli = this.traiterCommandeOubli(prompt);
     if (oubli) return { type: "reponse_directe", reponse: oubli };
+    const correction = this.traiterCommandeCorrection(prompt);
+    if (correction) return { type: "reponse_directe", reponse: correction };
+    const besoins = this.traiterCommandeBesoins(prompt);
+    if (besoins) return { type: "reponse_directe", reponse: besoins };
+
+    // Découpage en sous-tâches ("calcule 5+5 et traduis merci en anglais")
+    // — uniquement si CHAQUE segment matche clairement un service seul,
+    // pour éviter de casser une phrase normale contenant juste le mot "et".
+    const sousTaches = this.diviserEnSousTaches(prompt);
+    if (sousTaches) {
+      this._log("CLASSIFICATION", { prompt, decision: "sous_taches", nombre: sousTaches.length });
+      return { type: "sous_taches", segments: sousTaches };
+    }
 
     // 1) Mémoire d'associations déjà confirmées
     const souvenir = this.rechercherMemoire(prompt);
@@ -342,6 +437,7 @@ class Router {
     if (candidats.length === 0) {
       const analyse = this.analyserRequete(prompt);
       this._log("CLASSIFICATION", { prompt, decision: "capacite_manquante", mots: analyse.motsSignificatifs });
+      this.enregistrerBesoinNonComble(analyse.motsSignificatifs, prompt);
       return { type: "capacite_manquante", motsDetectes: analyse.motsSignificatifs };
     }
 
@@ -361,6 +457,51 @@ class Router {
     return { type: "service", service: meilleur.service, confiance: meilleur.confiance };
   }
 
+  /**
+   * Découpe une phrase en sous-tâches sur " et "/";" — n'accepte le
+   * découpage que si CHAQUE segment obtient un match exact (score >= 1)
+   * indépendamment. Sinon, renvoie null et la phrase est traitée comme
+   * une seule tâche (repli sûr, pas de faux découpage).
+   */
+  diviserEnSousTaches(prompt) {
+    const segments = prompt.split(/\s+\bet\b\s+|;\s*/i).map((s) => s.trim()).filter(Boolean);
+    if (segments.length < 2) return null;
+    const evaluations = segments.map((seg) => this.evaluerCandidats(seg));
+    const tousValides = evaluations.every((ev) => ev.length > 0 && ev[0].score >= 1);
+    return tousValides ? segments : null;
+  }
+
+  /** Exécute chaque sous-tâche indépendamment, puis assemble un rapport unique. */
+  async executerSousTaches(segments) {
+    const resultatsParties = [];
+    for (const segment of segments) {
+      const classificationSegment = this.classifierRequete(segment);
+      let resultatSegment;
+
+      if (classificationSegment.type === "service") {
+        const payload = this.construirePayload(classificationSegment.service, segment);
+        resultatSegment = await this.appelerService(classificationSegment.service, payload);
+        if (resultatSegment && resultatSegment.succes !== false) {
+          this.enregistrerAssociation(segment, classificationSegment.service.id);
+        }
+      } else if (classificationSegment.type === "chaine") {
+        resultatSegment = await this.executerChaine(classificationSegment.chaine, segment);
+      } else {
+        resultatSegment = { succes: false, texteRedige: "" };
+      }
+      resultatsParties.push({ segment, resultat: resultatSegment });
+    }
+
+    const texteFinal = resultatsParties
+      .map(({ segment, resultat }) => {
+        const texte = (resultat && resultat.texteRedige) ? resultat.texteRedige : "(aucun résultat exploitable pour cette partie)";
+        return segment + " → " + texte;
+      })
+      .join("\n\n");
+
+    return { succes: true, texteRedige: texteFinal, _sousTaches: resultatsParties.map((r) => r.segment) };
+  }
+
   // ========================================================================
   // Construction du payload et appel du neurone (inchangé dans le principe)
   // ========================================================================
@@ -371,8 +512,7 @@ class Router {
         const match = prompt.match(/[\d+\-*/().,\s]+(?=\D*$)|[\d+\-*/().,\s]{2,}/);
         return { expression: match ? match[0].trim() : prompt };
       }
-      case "traducteur":
-      case "traduction-etendue": {
+      case "traducteur": {
         const cible = /anglais|english|en anglais/i.test(prompt) ? "en" : "fr";
         return { texte: prompt, cible };
       }
@@ -458,60 +598,13 @@ class Router {
   }
 
   // ========================================================================
-  // Point d'entrée principal (Mis à jour pour supporter le multitâche simultané)
+  // Point d'entrée principal
   // ========================================================================
 
   async router(prompt, containerElement = null) {
     this._log("REQUETE_RECUE", { prompt });
     if (!this.registry) await this.chargerRegistre();
 
-    // Découpage large sur les virgules, les points-virgules et les "et"
-    const sousPrompts = prompt
-      .split(/[,;]|\b(?:et|puis|ensuite)\b/i)
-      .map(p => p.trim())
-      .filter(p => p.length > 2);
-
-    if (sousPrompts.length <= 1) {
-      return await this._executerRequeteSimple(prompt, containerElement);
-    }
-
-    this._log("MULTITACHE_DETECTE", { nb_taches: sousPrompts.length, sousPrompts });
-
-    // Exécution simultanée de TOUS les sous-prompts détectés
-    const promesses = sousPrompts.map(async (sousPrompt) => {
-      const classification = this.classifierRequete(sousPrompt);
-      if (classification.type === "service") {
-        const payload = this.construirePayload(classification.service, sousPrompt);
-        return await this.appelerService(classification.service, payload);
-      } else if (classification.type === "chaine") {
-        return await this.executerChaine(classification.chaine, sousPrompt);
-      }
-      return null;
-    });
-
-    const resultatsBruts = await Promise.all(promesses);
-    const resultatsValides = resultatsBruts.filter(r => r !== null && r.reponse);
-
-    let htmlCombine = "";
-    if (resultatsValides.length > 0) {
-      htmlCombine = "<div style='display:flex; flex-direction:column; gap:12px;'>";
-      resultatsValides.forEach(res => {
-        htmlCombine += `<div style='background:#f9f9f8; padding:12px; border-radius:8px; border:1px solid #E3E0D8;'>${res.reponse}</div>`;
-      });
-      htmlCombine += "</div>";
-    } else {
-      htmlCombine = "<p style='margin:0; color:#666666;'>Aucun service n'a pu traiter simultanément ces demandes.</p>";
-    }
-
-    const reponseFinale = { succes: true, reponse: htmlCombine };
-    if (containerElement) {
-      containerElement.innerHTML = reponseFinale.reponse;
-    }
-    return reponseFinale;
-  }
-
-  // Méthode interne pour garder le comportement d'origine sur une requête simple
-  async _executerRequeteSimple(prompt, containerElement) {
     const classification = this.classifierRequete(prompt);
 
     if (classification.type === "reponse_directe") {
@@ -520,6 +613,7 @@ class Router {
     }
 
     if (classification.type === "capacite_manquante") {
+      this.dernierEchange = { prompt, serviceId: null };
       const motsTexte = classification.motsDetectes.length > 0
         ? classification.motsDetectes.join(", ")
         : "(aucun mot significatif identifié)";
@@ -528,30 +622,43 @@ class Router {
         interne: true,
         reponse:
           `<p><strong>Capacité manquante</strong> : aucun neurone du registre ne correspond, même approximativement, à cette demande.</p>` +
-          `<p>Mots significatifs identifiés : ${this._echapper(motsTexte)}.</p>`
+          `<p>Mots significatifs identifiés : ${this._echapper(motsTexte)}.</p>` +
+          `<p>Ce diagnostic reste fondé sur des règles, pas sur une vraie compréhension — si un neurone existe déjà pour ce besoin, ` +
+          `essayez de reformuler avec un mot plus proche de sa fonction déclarée. Sinon, un nouveau neurone devra être créé et enregistré ` +
+          `dans le registre pour combler ce manque.</p>`
       };
       if (containerElement) containerElement.innerHTML = reponseInterne.reponse;
       return reponseInterne;
     }
 
     if (classification.type === "incertain") {
+      this.dernierEchange = { prompt, serviceId: null };
       const [a, b] = classification.candidats;
       const reponseIncertaine = {
         succes: true,
         interne: true,
         reponse:
-          `<p><strong>Incertain</strong> : cette demande pourrait correspondre à plusieurs neurones — <em>${this._echapper(a.service.nom || a.service.id)}</em> ou <em>${this._echapper(b.service.nom || b.service.id)}</em>.</p>`
+          `<p><strong>Incertain</strong> : cette demande pourrait correspondre à plusieurs neurones sans qu'un seul se ` +
+          `distingue clairement — <em>${this._echapper(a.service.nom || a.service.id)}</em> ou <em>${this._echapper(b.service.nom || b.service.id)}</em>.</p>` +
+          `<p>Plutôt que de choisir au hasard, précisez votre demande pour lever l'ambiguïté.</p>`
       };
       if (containerElement) containerElement.innerHTML = reponseIncertaine.reponse;
       return reponseIncertaine;
     }
 
+    if (classification.type === "sous_taches") {
+      this.dernierEchange = { prompt, serviceId: null };
+      return await this.executerSousTaches(classification.segments);
+    }
+
     if (classification.type === "chaine") {
+      this.dernierEchange = { prompt, serviceId: "chaine:" + classification.chaine.id };
       return await this.executerChaine(classification.chaine, prompt);
     }
 
     // type === "service"
     const service = classification.service;
+    this.dernierEchange = { prompt, serviceId: service.id };
     const payload = this.construirePayload(service, prompt);
 
     try {
