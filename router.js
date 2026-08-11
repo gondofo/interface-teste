@@ -579,10 +579,15 @@ class Router {
       }
       case "traducteur": {
         const cible = /anglais|english|en anglais/i.test(prompt) ? "en" : "fr";
-        return { texte: prompt, cible };
+        const texteBrut = prompt.replace(/^(traduis|traduction|translate)\s*:?\s*/i, "").trim();
+        const texte = texteBrut.length > 3 ? texteBrut : (this.dernierTexteRedige || prompt);
+        return { texte, cible };
       }
-      case "resume-texte":
-        return { texte: prompt, longueur_max: 3 };
+      case "resume-texte": {
+        const texteBrut = prompt.replace(/^(résume|résumé|résumer|synthèse|condense)\s*:?\s*/i, "").trim();
+        const texte = texteBrut.length > 10 ? texteBrut : (this.dernierTexteRedige || prompt);
+        return { texte, longueur_max: 3 };
+      }
       case "horodateur":
         return { format: "long" };
       case "export-pdf": {
