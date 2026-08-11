@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Source — Météo</title></head>
+<body>
+<!--
+  Source "meteo" — API Open-Meteo (gratuite, sans clé, CORS ouvert).
+  1. Géocodage du nom de ville -> coordonnées
+  2. Prévisions actuelles à ces coordonnées
+-->
+<script>
+(function () {
+  "use strict";
+
+  const CODES_METEO = {
+    0: "ciel dégagé", 1: "plutôt dégagé", 2: "partiellement nuageux", 3: "couvert",
+    45: "brouillard", 48: "brouillard givrant",
+    51: "bruine légère", 53: "bruine modérée", 55: "bruine dense",
+    61: "pluie légère", 63: "pluie modérée", 65: "pluie forte",
+    71: "neige légère", 73: "neige modérée", 75: "neige forte",
+    80: "averses légères", 81: "averses modérées", 82: "averses violentes",
+    95: "orage", 96: "orage avec grêle légère", 99: "orage avec grêle forte"
+  };
+
+  function extraireVille(prompt) {
+    const match = prompt.match(/m[ée]t[ée]o\s*(?:à|a|de|pour)?\s*:?\s*(.+)/i) ||
+                  prompt.match(/quel\s+temps\s+fait[- ]il\s*(?:à|a)?\s*:?\s*(.+)/i);
+    return match ? match[1].trim().replace(/[?.!]+$/g, "") : "";
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim();
+    const ville = extraireVille(texte);
+    if (!ville) return { succes: false };
+
+    try {
+      const geoUrl = "https://geocoding-api.open-meteo.com/v1/search?count=1&language=fr&format=json&name=" + encodeURIComponent(ville);
+      const geoReponse = await fetch(geoUrl);
+      const geoData = await geoReponse.json();
+      const lieu = (geoData.results || [])[0];
+      if (!lieu) return { succes: true, texteRedige: "Je n'ai pas trouvé de lieu correspondant à \"" + ville + "\"." };
+
+      const previsionUrl =
+        "https://api.open-meteo.com/v1/forecast?latitude=" + lieu.latitude + "&longitude=" + lieu.longitude +
+        "&current=temperature_2m,weathercode,windspeed_10m,relative_humidity_2m&timezone=auto";
+      const previsionReponse = await fetch(previsionUrl);
+      const previsionData = await previsionReponse.json();
+      const actuel = previsionData.current;
+      if (!actuel) return { succes: true, texteRedige: "Les données météo ne sont pas disponibles pour ce lieu actuellement." };
+
+      const description = CODES_METEO[actuel.weathercode] || "conditions inconnues";
+      const nomComplet = lieu.name + (lieu.country ? ", " + lieu.country : "");
+
+      return {
+        succes: true,
+        texteRedige:
+          "Météo à " + nomComplet + " :\n\n" +
+          "Température : " + actuel.temperature_2m + "°C\n" +
+          "Conditions : " + description + "\n" +
+          "Humidité : " + actuel.relative_humidity_2m + "%\n" +
+          "Vent : " + actuel.windspeed_10m + " km/h"
+      };
+    } catch (erreur) {
+      console.error("[meteo]", erreur);
+      return { succes: true, texteRedige: "Je n'ai pas pu récupérer la météo pour le moment (problème réseau)." };
+    }
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
