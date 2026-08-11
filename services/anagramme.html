@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Anagramme</title></head>
+<body>
+<!-- Neurone "anagramme" — mélange les lettres d'un mot, ou vérifie si deux mots sont anagrammes. -->
+<script>
+(function () {
+  "use strict";
+
+  function melanger(mot) {
+    const lettres = mot.split("");
+    for (let i = lettres.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [lettres[i], lettres[j]] = [lettres[j], lettres[i]];
+    }
+    return lettres.join("");
+  }
+
+  function normaliser(mot) {
+    return mot.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split("").sort().join("");
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim();
+    if (!texte) return { succes: false };
+
+    const comparaisonMatch = texte.match(/(\S+)\s+et\s+(\S+)\s+(?:sont-ils|sont)\s+des?\s+anagrammes?/i);
+    if (comparaisonMatch) {
+      const [, motA, motB] = comparaisonMatch;
+      const sontAnagrammes = normaliser(motA) === normaliser(motB);
+      return {
+        succes: true,
+        texteRedige: sontAnagrammes
+          ? motA + " et " + motB + " sont bien des anagrammes."
+          : motA + " et " + motB + " ne sont PAS des anagrammes."
+      };
+    }
+
+    const motMatch = texte.match(/anagramme\s+(?:de|pour)?\s*:?\s*(\S+)/i) || texte.match(/m[ée]lange\s*:?\s*(\S+)/i);
+    const mot = motMatch ? motMatch[1] : texte.split(/\s+/).pop();
+    if (!mot || mot.length < 2) return { succes: true, texteRedige: "Donnez un mot d'au moins 2 lettres à mélanger." };
+
+    let resultat = melanger(mot);
+    let tentatives = 0;
+    while (resultat === mot && tentatives < 5) { resultat = melanger(mot); tentatives++; }
+
+    return { succes: true, texteRedige: mot + " mélangé : " + resultat };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

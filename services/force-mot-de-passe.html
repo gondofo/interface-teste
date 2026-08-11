@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Force de mot de passe</title></head>
+<body>
+<!-- Neurone "force-mot-de-passe" — calcul réel d'entropie (bits), pas une estimation approximative. -->
+<script>
+(function () {
+  "use strict";
+
+  function calculerEntropie(mdp) {
+    let jeuCaracteres = 0;
+    if (/[a-z]/.test(mdp)) jeuCaracteres += 26;
+    if (/[A-Z]/.test(mdp)) jeuCaracteres += 26;
+    if (/[0-9]/.test(mdp)) jeuCaracteres += 10;
+    if (/[^a-zA-Z0-9]/.test(mdp)) jeuCaracteres += 32;
+    if (jeuCaracteres === 0) return 0;
+    return Math.round(mdp.length * Math.log2(jeuCaracteres));
+  }
+
+  function niveau(bits) {
+    if (bits < 28) return "très faible";
+    if (bits < 36) return "faible";
+    if (bits < 60) return "moyen";
+    if (bits < 80) return "fort";
+    return "très fort";
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim();
+    const match = texte.match(/force\s+(?:de|du)?\s*(?:mot de passe)?\s*:?\s*(\S+)/i) || texte.match(/:\s*(\S+)\s*$/);
+    const mdp = match ? match[1] : texte.split(/\s+/).pop();
+    if (!mdp) return { succes: false };
+
+    const bits = calculerEntropie(mdp);
+    return {
+      succes: true,
+      texteRedige:
+        "Entropie estimée : " + bits + " bits — niveau " + niveau(bits) + ".\n\n" +
+        "(Estimation basée sur la diversité et la longueur des caractères, pas sur un dictionnaire de mots de passe fuités — un mot de passe long mais composé de mots courants réels peut être plus faible que ce chiffre ne le suggère.)"
+    };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

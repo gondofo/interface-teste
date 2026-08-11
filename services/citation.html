@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Citation</title></head>
+<body>
+<!-- Neurone "citation" — liste locale (aucun appel réseau, aucun risque de dépendance externe pour un simple agrément). -->
+<script>
+(function () {
+  "use strict";
+
+  const CITATIONS = [
+    { texte: "Le seul moyen de faire du bon travail est d'aimer ce que vous faites.", auteur: "Steve Jobs" },
+    { texte: "La simplicité est la sophistication suprême.", auteur: "Léonard de Vinci" },
+    { texte: "Ce qui ne me tue pas me rend plus fort.", auteur: "Friedrich Nietzsche" },
+    { texte: "L'imagination est plus importante que le savoir.", auteur: "Albert Einstein" },
+    { texte: "Le succès, c'est aller d'échec en échec sans perdre son enthousiasme.", auteur: "Winston Churchill" },
+    { texte: "Il n'y a pas de vent favorable pour celui qui ne sait où il va.", auteur: "Sénèque" },
+    { texte: "La perfection est atteinte, non pas lorsqu'il n'y a plus rien à ajouter, mais lorsqu'il n'y a plus rien à retirer.", auteur: "Antoine de Saint-Exupéry" },
+    { texte: "On ne voit bien qu'avec le cœur, l'essentiel est invisible pour les yeux.", auteur: "Antoine de Saint-Exupéry" },
+    { texte: "Le doute est le commencement de la sagesse.", auteur: "Aristote" },
+    { texte: "Rien n'est permanent, sauf le changement.", auteur: "Héraclite" }
+  ];
+
+  async function traiterRequete() {
+    const choisie = CITATIONS[Math.floor(Math.random() * CITATIONS.length)];
+    return { succes: true, texteRedige: "\"" + choisie.texte + "\"\n— " + choisie.auteur };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    traiterRequete().then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
