@@ -448,6 +448,16 @@ class Router {
     }
 
     if (candidats.length === 0) {
+      // Filet de secours structurel — pas de l'IA, deux motifs déterministes
+      // pour les cas où AUCUN mot-clé ne peut exister par nature :
+      //   1) une expression mathématique nue, sans le mot "calcule"
+      //   2) un nom propre nu (majuscules), sans verbe de recherche
+      const secoursStructurel = this._secoursStructurel(prompt);
+      if (secoursStructurel) {
+        this._log("CLASSIFICATION", { prompt, decision: "service", service: secoursStructurel.id, confiance: "heuristique structurelle" });
+        return { type: "service", service: secoursStructurel, confiance: "heuristique structurelle" };
+      }
+
       const analyse = this.analyserRequete(prompt);
       this._log("CLASSIFICATION", { prompt, decision: "capacite_manquante", mots: analyse.motsSignificatifs });
       this.enregistrerBesoinNonComble(analyse.motsSignificatifs, prompt);
@@ -470,6 +480,38 @@ class Router {
 
     this._log("CLASSIFICATION", { prompt, decision: "service", service: meilleur.service.id, confiance: meilleur.confiance });
     return { type: "service", service: meilleur.service, confiance: meilleur.confiance };
+  }
+
+  /**
+   * Filet de secours structurel — uniquement pour les deux cas où AUCUN
+   * mot-clé ne peut exister par construction : une expression mathématique
+   * pure, ou un nom propre nu. Reste 100% déterministe (RegEx sur la forme
+   * du message), pas une devinette sémantique.
+   */
+  _secoursStructurel(prompt) {
+    const t = prompt.trim();
+
+    // 1) Expression mathématique nue : uniquement chiffres/opérateurs/
+    // parenthèses, au moins un opérateur et un chiffre. Très précis, donc
+    // faible risque de faux positif.
+    if (/^[\d+\-*/().,\s]+$/.test(t) && /\d/.test(t) && /[+\-*/]/.test(t)) {
+      const calculatrice = this.registry.services.find((s) => s.id === "calculatrice");
+      if (calculatrice) return calculatrice;
+    }
+
+    // 2) Phrase courte sans aucun mot-clé reconnu nulle part ailleurs : en
+    // tout dernier recours (candidats.length === 0 déjà vérifié par
+    // l'appelant), on tente la recherche plutôt que de bloquer sec. Pas de
+    // critère de majuscule : les gens tapent rarement avec la casse
+    // correcte ("paris france" en minuscules doit marcher aussi bien que
+    // "Paris France").
+    const mots = t.split(/\s+/).filter(Boolean);
+    if (mots.length >= 1 && mots.length <= 5 && !/\d/.test(t)) {
+      const recherche = this.registry.services.find((s) => s.id === "web-search");
+      if (recherche) return recherche;
+    }
+
+    return null;
   }
 
   /**
@@ -505,6 +547,14 @@ class Router {
         resultatSegment = { succes: false, texteRedige: "" };
       }
       resultatsParties.push({ segment, resultat: resultatSegment });
+
+      // Transmission inter-services : le texte produit par cette sous-tâche
+      // devient immédiatement disponible pour la suivante (ex: "recherche X,
+      // puis exporte en pdf" — le PDF doit pouvoir réutiliser le résultat
+      // de la recherche, pas seulement celui d'un appel précédent totalement séparé).
+      if (resultatSegment && resultatSegment.texteRedige) {
+        this.dernierTexteRedige = resultatSegment.texteRedige;
+      }
     }
 
     const texteFinal = resultatsParties
