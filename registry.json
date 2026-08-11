@@ -223,7 +223,7 @@
       "nom": "Calculatrice arithmétique",
       "fonction": "Évalue une expression mathématique simple envoyée en texte (addition, soustraction, multiplication, division).",
       "url": "./services/calculatrice.html",
-      "mots_cles": ["calcule", "calcul", "combien fait", "additionne", "multiplie", "divise", "soustrais"],
+      "mots_cles": ["calcule", "calcul", "combien fait", "combien font", "additionne", "multiplie", "divise", "soustrais"],
       "parametres_attendus": {
         "expression": "string (obligatoire) — expression mathématique, ex: '12 * (4 + 2)'"
       },
