@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Morse</title></head>
+<body>
+<!-- Neurone "morse" — texte <-> code Morse, table standard internationale. -->
+<script>
+(function () {
+  "use strict";
+
+  const TABLE = {
+    a:".-", b:"-...", c:"-.-.", d:"-..", e:".", f:"..-.", g:"--.", h:"....",
+    i:"..", j:".---", k:"-.-", l:".-..", m:"--", n:"-.", o:"---", p:".--.",
+    q:"--.-", r:".-.", s:"...", t:"-", u:"..-", v:"...-", w:".--", x:"-..-",
+    y:"-.--", z:"--..",
+    "0":"-----", "1":".----", "2":"..---", "3":"...--", "4":"....-",
+    "5":".....", "6":"-....", "7":"--...", "8":"---..", "9":"----."
+  };
+  const TABLE_INVERSE = Object.fromEntries(Object.entries(TABLE).map(([k, v]) => [v, k]));
+
+  function texteVersMorse(texte) {
+    return texte.toLowerCase().split("").map((c) => {
+      if (c === " ") return "/";
+      return TABLE[c] || "";
+    }).filter(Boolean).join(" ");
+  }
+
+  function morseVersTexte(morse) {
+    return morse.trim().split(/\s+/).map((code) => {
+      if (code === "/") return " ";
+      return TABLE_INVERSE[code] || "?";
+    }).join("");
+  }
+
+  function ressembleAMorse(texte) {
+    return /^[.\-\/\s]+$/.test(texte.trim()) && /[.\-]/.test(texte);
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim();
+    if (!texte) return { succes: false };
+
+    const decodeMatch = texte.match(/d[ée]code\s*(?:ce\s*)?morse\s*:?\s*(.+)/i);
+    if (decodeMatch || ressembleAMorse(texte)) {
+      const contenu = decodeMatch ? decodeMatch[1].trim() : texte;
+      return { succes: true, texteRedige: "Texte décodé : " + morseVersTexte(contenu) };
+    }
+
+    const encodeMatch = texte.match(/(?:traduis|convertis|encode)\s*(?:en\s*morse)?\s*:?\s*(.+)/i);
+    const contenu = encodeMatch ? encodeMatch[1].trim() : texte;
+    return { succes: true, texteRedige: texteVersMorse(contenu) };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

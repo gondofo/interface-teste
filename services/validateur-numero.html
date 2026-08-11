@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Validateur de numéro</title></head>
+<body>
+<!-- Neurone "validateur-numero" — algorithme de Luhn (carte bancaire, IMEI...), calcul réel, pas de vérification en ligne. -->
+<script>
+(function () {
+  "use strict";
+
+  function luhnValide(numero) {
+    const chiffres = numero.replace(/\D/g, "").split("").reverse().map(Number);
+    if (chiffres.length < 8) return null; // trop court pour être un vrai numéro
+    let somme = 0;
+    chiffres.forEach((c, i) => {
+      if (i % 2 === 1) { c *= 2; if (c > 9) c -= 9; }
+      somme += c;
+    });
+    return somme % 10 === 0;
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim();
+    const numero = (texte.match(/[\d\s-]{8,}/) || [])[0];
+    if (!numero) return { succes: true, texteRedige: "Je n'ai trouvé aucune séquence de chiffres assez longue pour être vérifiée (algorithme de Luhn, 8 chiffres minimum)." };
+
+    const resultat = luhnValide(numero);
+    const numeroPropre = numero.replace(/\D/g, "");
+    return {
+      succes: true,
+      texteRedige: resultat
+        ? "Numéro " + numeroPropre + " : structure valide (clé de Luhn correcte)."
+        : "Numéro " + numeroPropre + " : structure invalide (échec de la clé de Luhn) — attention, ceci vérifie uniquement la cohérence mathématique, pas l'existence réelle du compte/carte."
+    };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

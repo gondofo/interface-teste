@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Convertisseur de bases</title></head>
+<body>
+<!-- Neurone "convertisseur-bases" — binaire / octal / décimal / hexadécimal. -->
+<script>
+(function () {
+  "use strict";
+
+  const BASES = { binaire: 2, octal: 8, décimal: 10, decimal: 10, hexadécimal: 16, hexadecimal: 16, hex: 16 };
+
+  function detecterBaseSource(nombreTexte) {
+    if (/^0x/i.test(nombreTexte)) return 16;
+    if (/^0b/i.test(nombreTexte)) return 2;
+    if (/^0o/i.test(nombreTexte)) return 8;
+    return 10;
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim().toLowerCase();
+    if (!texte) return { succes: false };
+
+    const nombreMatch = texte.match(/(0[xbo])?[0-9a-f]+/i);
+    if (!nombreMatch) return { succes: false };
+    const nombreTexte = nombreMatch[0];
+
+    let baseCible = null;
+    for (const nom of Object.keys(BASES)) {
+      if (texte.includes(nom)) { baseCible = BASES[nom]; break; }
+    }
+    if (!baseCible) return { succes: true, texteRedige: "Précisez la base cible : binaire, octal, décimal ou hexadécimal." };
+
+    const baseSource = detecterBaseSource(nombreTexte);
+    const nombreNettoye = nombreTexte.replace(/^0[xbo]/i, "");
+    const valeur = parseInt(nombreNettoye, baseSource);
+    if (isNaN(valeur)) return { succes: true, texteRedige: "Je n'ai pas pu interpréter ce nombre dans sa base d'origine." };
+
+    const resultat = valeur.toString(baseCible);
+    const nomsBases = { 2: "binaire", 8: "octal", 10: "décimal", 16: "hexadécimal" };
+    return {
+      succes: true,
+      texteRedige: valeur + " (décimal) = " + resultat + " (" + nomsBases[baseCible] + ")"
+    };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

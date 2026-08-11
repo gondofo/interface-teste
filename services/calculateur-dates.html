@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Calculateur de dates</title></head>
+<body>
+<!-- Neurone "calculateur-dates" — âge exact ou durée entre deux dates, calcul calendaire réel. -->
+<script>
+(function () {
+  "use strict";
+
+  function parseDate(str) {
+    const m = str.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+    if (!m) return null;
+    let [, j, mo, a] = m;
+    a = a.length === 2 ? "20" + a : a;
+    const d = new Date(parseInt(a, 10), parseInt(mo, 10) - 1, parseInt(j, 10));
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function ageExact(naissance, reference) {
+    let annees = reference.getFullYear() - naissance.getFullYear();
+    let mois = reference.getMonth() - naissance.getMonth();
+    let jours = reference.getDate() - naissance.getDate();
+    if (jours < 0) {
+      mois -= 1;
+      const moisPrecedent = new Date(reference.getFullYear(), reference.getMonth(), 0);
+      jours += moisPrecedent.getDate();
+    }
+    if (mois < 0) { annees -= 1; mois += 12; }
+    return { annees, mois, jours };
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim();
+    if (!texte) return { succes: false };
+
+    const dates = [];
+    const regexDates = /(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/g;
+    let m;
+    while ((m = regexDates.exec(texte)) !== null) dates.push(parseDate(m[1]));
+
+    if (dates.length === 0 || dates[0] === null) {
+      return { succes: true, texteRedige: "Je n'ai trouvé aucune date reconnaissable (format attendu : JJ/MM/AAAA)." };
+    }
+
+    if (dates.length === 1) {
+      const age = ageExact(dates[0], new Date());
+      return {
+        succes: true,
+        texteRedige: "Âge exact : " + age.annees + " an(s), " + age.mois + " mois et " + age.jours + " jour(s) (à la date d'aujourd'hui)."
+      };
+    }
+
+    const [d1, d2] = dates;
+    const diffJours = Math.round(Math.abs(d2 - d1) / (1000 * 60 * 60 * 24));
+    return { succes: true, texteRedige: "Durée entre les deux dates : " + diffJours + " jour(s)." };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
