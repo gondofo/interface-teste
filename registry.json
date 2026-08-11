@@ -108,6 +108,96 @@
       "timeout_ms": 5000
     },
     {
+      "id": "meteo",
+      "nom": "Météo (Open-Meteo)",
+      "fonction": "Donne la météo actuelle d'une ville (température, conditions, humidité, vent) via l'API gratuite Open-Meteo, sans clé.",
+      "url": "./modules/sources/meteo.html",
+      "mots_cles": ["météo à", "météo de", "quel temps fait-il", "météo pour", "prévisions météo"],
+      "parametres_attendus": { "texte": "string (obligatoire) — contient le nom de la ville" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 8000
+    },
+    {
+      "id": "palette-couleurs",
+      "nom": "Palette de couleurs harmonieuses",
+      "fonction": "Génère une palette de couleurs (complémentaire, analogue, triadique, monochromatique) à partir d'une couleur de base, via de vraies rotations de teinte HSL.",
+      "url": "./services/palette-couleurs.html",
+      "mots_cles": ["palette de couleurs", "génère une palette", "couleurs harmonieuses", "palette complémentaire", "palette analogue", "palette triadique"],
+      "parametres_attendus": { "texte": "string (obligatoire) — couleur de base (nom ou code hex) et type d'harmonie optionnel" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "bilan-systeme",
+      "nom": "Bilan système (réflexif)",
+      "fonction": "Lit la mémoire locale du navigateur (associations apprises, corrections, besoins non comblés) et en fait un bilan d'usage. Ne lit rien d'ailleurs, n'envoie rien nulle part.",
+      "url": "./modules/bilan-systeme.html",
+      "mots_cles": ["bilan du système", "bilan système", "statistiques d'usage", "que sais-tu de moi", "résumé de la mémoire", "état de la mémoire"],
+      "parametres_attendus": {},
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "nombre-en-lettres",
+      "nom": "Nombre en lettres",
+      "fonction": "Convertit un nombre entier en toutes lettres en français, avec les règles d'accord complètes (quatre-vingts/quatre-vingt-un, cents/cent un...).",
+      "url": "./services/nombre-en-lettres.html",
+      "mots_cles": ["en lettres", "écris en lettres", "nombre en lettres", "convertis en lettres"],
+      "parametres_attendus": { "texte": "string (obligatoire) — contient le nombre à convertir" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "calculateur-dates",
+      "nom": "Calculateur de dates",
+      "fonction": "Calcule un âge exact (années/mois/jours) ou la durée en jours entre deux dates, avec un vrai calcul calendaire.",
+      "url": "./services/calculateur-dates.html",
+      "mots_cles": ["quel âge a", "âge de", "jours entre", "durée entre", "combien de jours entre"],
+      "parametres_attendus": { "texte": "string (obligatoire) — contient une ou deux dates au format JJ/MM/AAAA" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "validateur-numero",
+      "nom": "Validateur de numéro (Luhn)",
+      "fonction": "Vérifie la cohérence mathématique d'un numéro (carte bancaire, IMEI...) via l'algorithme de Luhn. Ne vérifie pas l'existence réelle du compte.",
+      "url": "./services/validateur-numero.html",
+      "mots_cles": ["vérifie ce numéro", "numéro valide", "vérifie cette carte", "valide ce numéro", "vérifie ce code"],
+      "parametres_attendus": { "texte": "string (obligatoire) — le numéro à vérifier" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "convertisseur-bases",
+      "nom": "Convertisseur de bases numériques",
+      "fonction": "Convertit un nombre entre binaire, octal, décimal et hexadécimal.",
+      "url": "./services/convertisseur-bases.html",
+      "mots_cles": ["en binaire", "en hexadécimal", "en octal", "en décimal", "convertis en base"],
+      "parametres_attendus": { "texte": "string (obligatoire) — le nombre et la base cible" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "morse",
+      "nom": "Traducteur Morse",
+      "fonction": "Traduit du texte en code Morse, ou décode du Morse en texte, table internationale standard.",
+      "url": "./services/morse.html",
+      "mots_cles": ["en morse", "traduis en morse", "décode ce morse", "décode morse", "code morse"],
+      "parametres_attendus": { "texte": "string (obligatoire) — texte à encoder ou Morse à décoder" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "roue-ponderee",
+      "nom": "Roue pondérée",
+      "fonction": "Tirage aléatoire avec poids inégaux entre plusieurs options (ex: pizza:3, sushi:1).",
+      "url": "./services/roue-ponderee.html",
+      "mots_cles": ["roue pondérée", "tirage pondéré", "choix pondéré"],
+      "parametres_attendus": { "texte": "string (obligatoire) — options et poids séparés par des virgules" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
       "id": "aide",
       "nom": "Aide (liste des capacités)",
       "fonction": "Liste dynamiquement, à partir du registre, tout ce que l'interface sait faire actuellement.",
