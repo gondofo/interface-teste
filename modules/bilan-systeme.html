@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Bilan système</title></head>
+<body>
+<!--
+  Neurone "bilan-systeme" — le premier neurone qui regarde À L'INTÉRIEUR
+  du système plutôt que vers l'extérieur. Lit directement la mémoire du
+  routeur (localStorage, même clé que router.js) pour produire un vrai
+  bilan d'usage. Aucune donnée n'est jamais envoyée nulle part : tout
+  reste local à ce navigateur.
+-->
+<script>
+(function () {
+  "use strict";
+
+  const CLE_MEMOIRE = "orchestrateur-memoire";
+
+  function chargerMemoire() {
+    try {
+      const brut = localStorage.getItem(CLE_MEMOIRE);
+      const donnees = brut ? JSON.parse(brut) : {};
+      return {
+        associations: donnees.associations || {},
+        corrections: donnees.corrections || [],
+        besoinsNonCombles: donnees.besoinsNonCombles || {}
+      };
+    } catch (erreur) {
+      return { associations: {}, corrections: [], besoinsNonCombles: {} };
+    }
+  }
+
+  async function traiterRequete() {
+    const memoire = chargerMemoire();
+    const associations = Object.values(memoire.associations);
+    const nbAssociations = associations.length;
+    const nbConfirmees = associations.filter((a) => a.confirmee).length;
+    const nbCorrections = memoire.corrections.length;
+    const besoins = Object.entries(memoire.besoinsNonCombles);
+
+    const compteParService = {};
+    associations.forEach((a) => {
+      compteParService[a.serviceId] = (compteParService[a.serviceId] || 0) + a.occurrences;
+    });
+    const classement = Object.entries(compteParService).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+    let texte = "Bilan de la mémoire locale de ce navigateur (rien n'est envoyé ailleurs) :\n\n";
+    texte += "Associations apprises : " + nbAssociations + " (dont " + nbConfirmees + " confirmées explicitement)\n";
+    texte += "Corrections enregistrées : " + nbCorrections + "\n";
+    texte += "Besoins non comblés en attente : " + besoins.length + "\n";
+
+    if (classement.length > 0) {
+      texte += "\nNeurones les plus sollicités :\n";
+      texte += classement.map(([id, n], i) => (i + 1) + ". " + id + " (" + n + " fois)").join("\n");
+    }
+
+    if (nbAssociations === 0 && nbCorrections === 0 && besoins.length === 0) {
+      texte = "Aucune mémoire d'usage enregistrée pour l'instant dans ce navigateur — tout est vierge.";
+    }
+
+    return { succes: true, texteRedige: texte };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    traiterRequete().then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
