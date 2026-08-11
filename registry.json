@@ -198,6 +198,56 @@
       "timeout_ms": 5000
     },
     {
+      "id": "devises",
+      "nom": "Convertisseur de devises",
+      "fonction": "Convertit un montant entre devises (EUR, USD, GBP, JPY, CHF, CAD) avec de vrais taux de change à jour via frankfurter.app (données BCE, gratuit, sans clé).",
+      "url": "./modules/sources/devises.html",
+      "mots_cles": ["en dollars", "en euros", "en livres", "en yens", "en francs suisses", "convertis en devise"],
+      "parametres_attendus": { "texte": "string (obligatoire) — montant et devises source/cible" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 8000
+    },
+    {
+      "id": "force-mot-de-passe",
+      "nom": "Force de mot de passe",
+      "fonction": "Calcule l'entropie réelle (en bits) d'un mot de passe et son niveau de robustesse.",
+      "url": "./services/force-mot-de-passe.html",
+      "mots_cles": ["force de mot de passe", "force du mot de passe", "quelle est la force de"],
+      "parametres_attendus": { "texte": "string (obligatoire) — le mot de passe à évaluer" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "convertisseur-couleur",
+      "nom": "Convertisseur de couleur (HEX/RGB/HSL)",
+      "fonction": "Convertit une couleur entre les formats HEX, RGB et HSL.",
+      "url": "./services/convertisseur-couleur.html",
+      "mots_cles": ["convertis cette couleur", "hex en rgb", "rgb en hex", "couleur en hsl"],
+      "parametres_attendus": { "texte": "string (obligatoire) — la couleur en HEX ou RGB" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 5000
+    },
+    {
+      "id": "citation",
+      "nom": "Citation inspirante",
+      "fonction": "Renvoie une citation aléatoire parmi une liste locale (aucun appel réseau).",
+      "url": "./services/citation.html",
+      "mots_cles": ["donne-moi une citation", "cite quelqu'un", "citation du jour", "une citation"],
+      "parametres_attendus": {},
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 3000
+    },
+    {
+      "id": "anagramme",
+      "nom": "Anagramme",
+      "fonction": "Mélange les lettres d'un mot, ou vérifie si deux mots sont anagrammes l'un de l'autre.",
+      "url": "./services/anagramme.html",
+      "mots_cles": ["anagramme de", "mélange ce mot", "sont-ils des anagrammes", "anagramme"],
+      "parametres_attendus": { "texte": "string (obligatoire) — le(s) mot(s) à traiter" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 3000
+    },
+    {
       "id": "aide",
       "nom": "Aide (liste des capacités)",
       "fonction": "Liste dynamiquement, à partir du registre, tout ce que l'interface sait faire actuellement.",
