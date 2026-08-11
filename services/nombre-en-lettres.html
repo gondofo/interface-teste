@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Nombre en lettres</title></head>
+<body>
+<!-- Neurone "nombre-en-lettres" — conversion déterministe, règles françaises complètes. -->
+<script>
+(function () {
+  "use strict";
+
+  function nombreEnLettres(n) {
+    if (n === 0) return "zéro";
+    if (n < 0) return "moins " + nombreEnLettres(-n);
+
+    const unites = ["", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf"];
+    const teens = ["dix", "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf"];
+
+    function dizaine(n) {
+      if (n < 10) return unites[n];
+      if (n < 20) return teens[n - 10];
+      if (n < 70) {
+        const d = Math.floor(n / 10), u = n % 10;
+        const noms = ["", "", "vingt", "trente", "quarante", "cinquante", "soixante"];
+        if (u === 0) return noms[d];
+        if (u === 1) return noms[d] + "-et-un";
+        return noms[d] + "-" + unites[u];
+      }
+      if (n < 80) {
+        const u = n - 60;
+        if (u === 11) return "soixante-et-onze";
+        return "soixante-" + (u < 10 ? unites[u] : teens[u - 10]);
+      }
+      const u = n - 80;
+      if (u === 0) return "quatre-vingts";
+      return "quatre-vingt-" + (u < 10 ? unites[u] : teens[u - 10]);
+    }
+
+    function centaine(n) {
+      const c = Math.floor(n / 100), r = n % 100;
+      let mots = "";
+      if (c > 0) mots += (c === 1 ? "cent" : unites[c] + " cent") + (c > 1 && r === 0 ? "s" : "");
+      if (r > 0) mots += (mots ? " " : "") + dizaine(r);
+      return mots || "zéro";
+    }
+
+    const tranches = [
+      { valeur: 1000000000, nom: "milliard" },
+      { valeur: 1000000, nom: "million" },
+      { valeur: 1000, nom: "mille" }
+    ];
+
+    let reste = n;
+    const parties = [];
+    for (const t of tranches) {
+      if (reste >= t.valeur) {
+        const q = Math.floor(reste / t.valeur);
+        reste = reste % t.valeur;
+        if (t.nom === "mille") parties.push(q === 1 ? "mille" : centaine(q) + " mille");
+        else parties.push(centaine(q) + " " + t.nom + (q > 1 ? "s" : ""));
+      }
+    }
+    if (reste > 0 || parties.length === 0) parties.push(centaine(reste));
+    return parties.join(" ").replace(/\s+/g, " ").trim();
+  }
+
+  const MESSAGE_HORS_LIMITE =
+    "Je ne convertis que les nombres entiers entre -999 999 999 999 et 999 999 999 999 (limite raisonnable pour un résultat lisible).";
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim();
+    const match = texte.match(/-?\d[\d\s]*\d|-?\d/);
+    if (!match) return { succes: false };
+
+    const nombre = parseInt(match[0].replace(/\s/g, ""), 10);
+    if (Math.abs(nombre) > 999999999999) return { succes: true, texteRedige: MESSAGE_HORS_LIMITE };
+    if (!Number.isInteger(nombre)) return { succes: true, texteRedige: "Je ne convertis que les nombres entiers." };
+
+    return { succes: true, texteRedige: nombre + " s'écrit : " + nombreEnLettres(nombre) };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
