@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Source — Météo</title></head>
+<body>
+<!--
+  Source "meteo" — wttr.in (gratuit, sans clé, un seul appel réseau,
+  résout directement le nom de ville sans géocodage séparé).
+-->
+<script>
+(function () {
+  "use strict";
+
+  function extraireVille(prompt) {
+    const match = prompt.match(/m[ée]t[ée]o\s*(?:à|a|de|pour)?\s*:?\s*(.+)/i) ||
+                  prompt.match(/quel\s+temps\s+fait[- ]il\s*(?:à|a)?\s*:?\s*(.+)/i);
+    return match ? match[1].trim().replace(/[?.!]+$/g, "") : "";
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim();
+    const ville = extraireVille(texte);
+    if (!ville) return { succes: false };
+
+    try {
+      const url = "https://wttr.in/" + encodeURIComponent(ville) + "?format=j1&lang=fr";
+      const reponse = await fetch(url);
+      if (!reponse.ok) throw new Error("HTTP " + reponse.status);
+      const data = await reponse.json();
+      const actuel = data.current_condition && data.current_condition[0];
+      if (!actuel) return { succes: true, texteRedige: "Données météo indisponibles pour \"" + ville + "\"." };
+
+      const description =
+        (actuel.lang_fr && actuel.lang_fr[0] && actuel.lang_fr[0].value) ||
+        (actuel.weatherDesc && actuel.weatherDesc[0] && actuel.weatherDesc[0].value) ||
+        "conditions inconnues";
+
+      return {
+        succes: true,
+        texteRedige:
+          "Météo à " + ville + " :\n\n" +
+          "Température : " + actuel.temp_C + "°C (ressenti " + actuel.FeelsLikeC + "°C)\n" +
+          "Conditions : " + description + "\n" +
+          "Humidité : " + actuel.humidity + "%\n" +
+          "Vent : " + actuel.windspeedKmph + " km/h"
+      };
+    } catch (erreur) {
+      console.error("[meteo]", erreur);
+      return { succes: true, texteRedige: "Je n'ai pas pu récupérer la météo pour \"" + ville + "\" (service injoignable ou lieu introuvable)." };
+    }
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
