@@ -418,6 +418,18 @@ class Router {
     const besoins = this.traiterCommandeBesoins(prompt);
     if (besoins) return { type: "reponse_directe", reponse: besoins };
 
+    // Code couleur hexadécimal nu (#457b9d) : routage immédiat et prioritaire
+    // vers le convertisseur de couleur — motif sans ambiguïté possible,
+    // pas besoin de passer par le scoring normal.
+    const hexNu = prompt.trim().match(/^#?[0-9a-f]{6}$/i);
+    if (hexNu && this.registry) {
+      const convertisseur = this.registry.services.find((s) => s.id === "convertisseur-couleur");
+      if (convertisseur) {
+        this._log("CLASSIFICATION", { prompt, decision: "service", service: convertisseur.id, confiance: "structurelle (hex)" });
+        return { type: "service", service: convertisseur, confiance: "structurelle (hex)" };
+      }
+    }
+
     // Découpage en sous-tâches ("calcule 5+5 et traduis merci en anglais")
     // — uniquement si CHAQUE segment matche clairement un service seul,
     // pour éviter de casser une phrase normale contenant juste le mot "et".
