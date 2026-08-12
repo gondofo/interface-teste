@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — QR Code</title></head>
+<body>
+<!--
+  Neurone "qrcode" — génère un QR code via la bibliothèque qrcode (CDN,
+  légère, 100% navigateur). Réutilise le même mécanisme "fichier" que
+  l'export PDF : jamais de téléchargement automatique, un lien cliquable.
+-->
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim();
+    const match = texte.match(/qr\s*code\s*(?:pour|de)?\s*:?\s*(.+)/i);
+    const contenu = match ? match[1].trim() : texte;
+    if (!contenu) return { succes: false };
+
+    try {
+      const dataUrl = await QRCode.toDataURL(contenu, { width: 300, margin: 2 });
+      const reponseBlob = await fetch(dataUrl);
+      const blob = await reponseBlob.blob();
+      const nomFichier = "qrcode-" + Date.now() + ".png";
+
+      return {
+        succes: true,
+        texteRedige: "QR code généré pour : " + contenu,
+        fichier: { blob, nom: nomFichier, type: "image/png" }
+      };
+    } catch (erreur) {
+      console.error("[qrcode]", erreur);
+      return { succes: true, texteRedige: "Je n'ai pas pu générer ce QR code." };
+    }
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

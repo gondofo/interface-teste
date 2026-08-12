@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Dédoublonneur</title></head>
+<body>
+<!-- Neurone "dedoublonneur" — retire les lignes/éléments dupliqués d'une liste, garde l'ordre d'origine. -->
+<script>
+(function () {
+  "use strict";
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "");
+    const match = texte.match(/d[ée]doublonn[ée]?\s*(?:cette liste)?\s*:?\s*([\s\S]+)/i) ||
+                  texte.match(/retire les doublons\s*(?:de)?\s*:?\s*([\s\S]+)/i);
+    const contenu = match ? match[1].trim() : texte.trim();
+    if (!contenu) return { succes: false };
+
+    // Séparateur : retour à la ligne si présent, sinon virgule
+    const separateur = contenu.includes("\n") ? "\n" : ",";
+    const elements = contenu.split(separateur).map((e) => e.trim()).filter(Boolean);
+
+    const vus = new Set();
+    const uniques = [];
+    let nbDoublons = 0;
+    for (const e of elements) {
+      const cle = e.toLowerCase();
+      if (vus.has(cle)) { nbDoublons++; continue; }
+      vus.add(cle);
+      uniques.push(e);
+    }
+
+    return {
+      succes: true,
+      texteRedige:
+        (nbDoublons > 0 ? nbDoublons + " doublon(s) retiré(s) :\n\n" : "Aucun doublon trouvé :\n\n") +
+        uniques.join(separateur === "\n" ? "\n" : ", ")
+    };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

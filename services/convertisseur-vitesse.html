@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Convertisseur de vitesse</title></head>
+<body>
+<!-- Neurone "convertisseur-vitesse" — km/h, mph, m/s, nœuds. Conversions exactes via un pivot commun (m/s). -->
+<script>
+(function () {
+  "use strict";
+
+  const VERS_MS = { "km/h": 1 / 3.6, "kmh": 1 / 3.6, "mph": 0.44704, "m/s": 1, "ms": 1, "noeuds": 0.514444, "nœuds": 0.514444 };
+  const DEPUIS_MS = { "km/h": 3.6, "mph": 2.23694, "m/s": 1, "noeuds": 1.94384, "nœuds": 1.94384 };
+
+  function detecterUnite(texte, table) {
+    for (const u of Object.keys(table)) if (texte.includes(u)) return u;
+    return null;
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim().toLowerCase();
+    const nombreMatch = texte.match(/-?\d+(?:[.,]\d+)?/);
+    if (!nombreMatch) return { succes: false };
+    const valeur = parseFloat(nombreMatch[0].replace(",", "."));
+
+    const parties = texte.split(/\ben\b/);
+    if (parties.length < 2) return { succes: true, texteRedige: "Format attendu : \"100 km/h en mph\", \"20 nœuds en km/h\"..." };
+
+    const uniteSource = detecterUnite(parties[0], VERS_MS);
+    const uniteCible = detecterUnite(parties[1], DEPUIS_MS);
+    if (!uniteSource || !uniteCible) {
+      return { succes: true, texteRedige: "Unités reconnues : km/h, mph, m/s, nœuds." };
+    }
+
+    const enMs = valeur * VERS_MS[uniteSource];
+    const resultat = enMs * DEPUIS_MS[uniteCible];
+
+    return { succes: true, texteRedige: valeur + " " + uniteSource + " = " + resultat.toFixed(2) + " " + uniteCible };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

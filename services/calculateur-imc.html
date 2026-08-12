@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Calculateur IMC</title></head>
+<body>
+<!-- Neurone "calculateur-imc" — IMC = poids(kg) / taille(m)². Repère informatif standard, pas un diagnostic médical. -->
+<script>
+(function () {
+  "use strict";
+
+  function categorie(imc) {
+    if (imc < 18.5) return "insuffisance pondérale";
+    if (imc < 25) return "corpulence normale";
+    if (imc < 30) return "surpoids";
+    if (imc < 35) return "obésité modérée";
+    if (imc < 40) return "obésité sévère";
+    return "obésité massive";
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim();
+    const poidsMatch = texte.match(/(\d+(?:[.,]\d+)?)\s*kg/i);
+    const tailleMatch = texte.match(/(\d+(?:[.,]\d+)?)\s*(?:m|cm)\b/i);
+    if (!poidsMatch || !tailleMatch) {
+      return { succes: true, texteRedige: "Format attendu : \"IMC pour 70 kg et 1.75 m\" (poids en kg, taille en m ou cm)." };
+    }
+
+    const poids = parseFloat(poidsMatch[1].replace(",", "."));
+    let taille = parseFloat(tailleMatch[1].replace(",", "."));
+    if (/cm/i.test(tailleMatch[0])) taille = taille / 100;
+    if (taille <= 0 || poids <= 0) return { succes: true, texteRedige: "Valeurs invalides." };
+
+    const imc = poids / (taille * taille);
+    return {
+      succes: true,
+      texteRedige:
+        "IMC : " + imc.toFixed(1) + " (" + categorie(imc) + ")\n\n" +
+        "(Repère statistique standard — ne remplace pas un avis médical, ne tient pas compte de la masse musculaire ou de la morphologie individuelle.)"
+    };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
