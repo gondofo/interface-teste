@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Calculateur de pourcentage</title></head>
+<body>
+<!-- Neurone "calculateur-pourcentage" — 3 formes de calcul de pourcentage courantes. -->
+<script>
+(function () {
+  "use strict";
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim();
+    if (!texte) return { succes: false };
+
+    let m = texte.match(/(-?\d+(?:[.,]\d+)?)\s*%\s*de\s*(-?\d+(?:[.,]\d+)?)/i);
+    if (m) {
+      const pct = parseFloat(m[1].replace(",", "."));
+      const base = parseFloat(m[2].replace(",", "."));
+      return { succes: true, texteRedige: pct + "% de " + base + " = " + ((pct / 100) * base).toFixed(2) };
+    }
+
+    m = texte.match(/(-?\d+(?:[.,]\d+)?)\s+est\s+quel\s+pourcentage\s+de\s+(-?\d+(?:[.,]\d+)?)/i);
+    if (m) {
+      const partie = parseFloat(m[1].replace(",", "."));
+      const total = parseFloat(m[2].replace(",", "."));
+      if (total === 0) return { succes: true, texteRedige: "Division par zéro impossible." };
+      return { succes: true, texteRedige: partie + " représente " + ((partie / total) * 100).toFixed(2) + "% de " + total };
+    }
+
+    m = texte.match(/augmente\s+(-?\d+(?:[.,]\d+)?)\s+de\s+(-?\d+(?:[.,]\d+)?)\s*%/i);
+    if (m) {
+      const base = parseFloat(m[1].replace(",", "."));
+      const pct = parseFloat(m[2].replace(",", "."));
+      return { succes: true, texteRedige: base + " augmenté de " + pct + "% = " + (base * (1 + pct / 100)).toFixed(2) };
+    }
+
+    m = texte.match(/diminue\s+(-?\d+(?:[.,]\d+)?)\s+de\s+(-?\d+(?:[.,]\d+)?)\s*%/i);
+    if (m) {
+      const base = parseFloat(m[1].replace(",", "."));
+      const pct = parseFloat(m[2].replace(",", "."));
+      return { succes: true, texteRedige: base + " diminué de " + pct + "% = " + (base * (1 - pct / 100)).toFixed(2) };
+    }
+
+    return {
+      succes: true,
+      texteRedige: "Formats reconnus : \"20% de 150\", \"30 est quel pourcentage de 200\", \"augmente 100 de 15%\", \"diminue 100 de 15%\"."
+    };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

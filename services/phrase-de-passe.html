@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Phrase de passe</title></head>
+<body>
+<!-- Neurone "phrase-de-passe" — mots courants français, aléa cryptographique réel, plus mémorisable qu'une suite de caractères. -->
+<script>
+(function () {
+  "use strict";
+
+  const MOTS = [
+    "table","montagne","rivière","soleil","nuage","forêt","jardin","lumière","voyage","musique",
+    "papillon","cristal","tempête","horizon","vallée","cascade","érable","comète","récolte","aurore",
+    "sentier","brume","falaise","volcan","corail","glacier","prairie","étoile","lanterne","boussole",
+    "chalet","rocher","source","clarté","murmure","tonnerre","racine","branche","feuille","écorce",
+    "grenier","fenêtre","balcon","tapis","chandelle","miroir","tiroir","coussin","velours","cristallin"
+  ];
+
+  function genererPhrase(nbMots) {
+    const octets = new Uint32Array(nbMots);
+    crypto.getRandomValues(octets);
+    const choix = Array.from(octets, (o) => MOTS[o % MOTS.length]);
+    const chiffre = crypto.getRandomValues(new Uint32Array(1))[0] % 100;
+    return choix.join("-") + "-" + chiffre;
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "");
+    const match = texte.match(/(\d)\s*mots?/i);
+    let nbMots = match ? parseInt(match[1], 10) : 4;
+    nbMots = Math.max(3, Math.min(8, nbMots));
+
+    const phrase = genererPhrase(nbMots);
+    return { succes: true, texteRedige: "Phrase de passe générée (" + nbMots + " mots) :\n\n" + phrase };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Générateur de slug</title></head>
+<body>
+<!-- Neurone "generateur-slug" — convertit un titre en slug URL propre, déterministe. -->
+<script>
+(function () {
+  "use strict";
+
+  function genererSlug(texte) {
+    return texte
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // retire les accents
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .replace(/-{2,}/g, "-");
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim();
+    const match = texte.match(/slug\s*(?:de|pour|:)?\s*(.+)/i);
+    const contenu = match ? match[1].trim() : texte;
+    if (!contenu) return { succes: false };
+
+    return { succes: true, texteRedige: genererSlug(contenu) };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
