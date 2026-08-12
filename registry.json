@@ -212,7 +212,7 @@
       "nom": "Force de mot de passe",
       "fonction": "Calcule l'entropie réelle (en bits) d'un mot de passe et son niveau de robustesse.",
       "url": "./services/force-mot-de-passe.html",
-      "mots_cles": ["force de mot de passe", "force du mot de passe", "quelle est la force de"],
+      "mots_cles": ["force de mot de passe", "force du mot de passe", "quelle est la force de", "évalue ce mot de passe", "solidité du mot de passe"],
       "parametres_attendus": { "texte": "string (obligatoire) — le mot de passe à évaluer" },
       "format_reponse": { "succes": true, "texteRedige": "string" },
       "timeout_ms": 5000
@@ -248,6 +248,46 @@
       "timeout_ms": 3000
     },
     {
+      "id": "fuseau-horaire",
+      "nom": "Fuseaux horaires",
+      "fonction": "Donne l'heure actuelle dans une ville donnée, via l'API native du navigateur (aucun appel réseau nécessaire).",
+      "url": "./modules/sources/fuseau-horaire.html",
+      "mots_cles": ["heure à", "il est quelle heure à", "heure actuelle à"],
+      "parametres_attendus": { "texte": "string (obligatoire) — la ville" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 3000
+    },
+    {
+      "id": "phrase-de-passe",
+      "nom": "Phrase de passe (diceware)",
+      "fonction": "Génère une phrase de passe mémorisable à partir de mots courants, aléa cryptographique réel.",
+      "url": "./services/phrase-de-passe.html",
+      "mots_cles": ["phrase de passe", "génère une phrase de passe", "mot de passe mémorisable"],
+      "parametres_attendus": { "texte": "string (optionnel) — peut préciser le nombre de mots" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 3000
+    },
+    {
+      "id": "generateur-slug",
+      "nom": "Générateur de slug",
+      "fonction": "Convertit un titre en identifiant d'URL propre (minuscules, tirets, sans accents).",
+      "url": "./services/generateur-slug.html",
+      "mots_cles": ["slug de", "génère un slug", "slug pour"],
+      "parametres_attendus": { "texte": "string (obligatoire) — le titre à convertir" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 3000
+    },
+    {
+      "id": "calculateur-pourcentage",
+      "nom": "Calculateur de pourcentage",
+      "fonction": "Calcule un pourcentage d'un nombre, une proportion, ou une augmentation/diminution en pourcentage.",
+      "url": "./services/calculateur-pourcentage.html",
+      "mots_cles": ["% de", "pourcentage de", "augmente de", "diminue de", "quel pourcentage"],
+      "parametres_attendus": { "texte": "string (obligatoire) — l'expression de pourcentage" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 3000
+    },
+    {
       "id": "aide",
       "nom": "Aide (liste des capacités)",
       "fonction": "Liste dynamiquement, à partir du registre, tout ce que l'interface sait faire actuellement.",
@@ -276,7 +316,7 @@
       "nom": "Générateur de mot de passe",
       "fonction": "Génère un mot de passe aléatoire sécurisé (aléa cryptographique), longueur personnalisable.",
       "url": "./services/generateur-mot-de-passe.html",
-      "mots_cles": ["mot de passe", "génère un mot de passe", "password", "génère-moi un mot de passe"],
+      "mots_cles": ["génère un mot de passe", "génère-moi un mot de passe", "crée un mot de passe", "nouveau mot de passe", "password"],
       "parametres_attendus": { "texte": "string (optionnel) — peut contenir la longueur souhaitée" },
       "format_reponse": { "succes": true, "texteRedige": "string" },
       "timeout_ms": 5000
