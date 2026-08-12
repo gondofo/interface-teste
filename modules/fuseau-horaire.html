@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Fuseaux horaires</title></head>
+<body>
+<!-- Neurone "fuseau-horaire" — heure actuelle dans une ville, via Intl.DateTimeFormat (natif navigateur, aucune API externe nécessaire). -->
+<script>
+(function () {
+  "use strict";
+
+  const FUSEAUX = {
+    "tokyo": "Asia/Tokyo", "new york": "America/New_York", "los angeles": "America/Los_Angeles",
+    "londres": "Europe/London", "london": "Europe/London", "paris": "Europe/Paris", "berlin": "Europe/Berlin",
+    "sydney": "Australia/Sydney", "moscou": "Europe/Moscow", "dubai": "Asia/Dubai",
+    "pékin": "Asia/Shanghai", "beijing": "Asia/Shanghai", "hong kong": "Asia/Hong_Kong",
+    "singapour": "Asia/Singapore", "mumbai": "Asia/Kolkata", "delhi": "Asia/Kolkata",
+    "são paulo": "America/Sao_Paulo", "sao paulo": "America/Sao_Paulo", "mexico": "America/Mexico_City",
+    "chicago": "America/Chicago", "toronto": "America/Toronto", "montréal": "America/Toronto",
+    "montreal": "America/Toronto", "seoul": "Asia/Seoul", "bangkok": "Asia/Bangkok"
+  };
+
+  function extraireVille(texte) {
+    const m = texte.match(/(?:heure|il est quelle heure)\s*(?:à|a)?\s*:?\s*(.+)/i);
+    return m ? m[1].trim().toLowerCase().replace(/[?.!]+$/g, "") : "";
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim();
+    const ville = extraireVille(texte);
+    const fuseau = FUSEAUX[ville];
+    if (!fuseau) {
+      return {
+        succes: true,
+        texteRedige: "Ville non reconnue. Villes disponibles : " + Object.keys(FUSEAUX).slice(0, 10).join(", ") + "..."
+      };
+    }
+
+    const maintenant = new Date();
+    const formatte = new Intl.DateTimeFormat("fr-FR", {
+      timeZone: fuseau, hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric"
+    }).format(maintenant);
+
+    return { succes: true, texteRedige: "Il est actuellement " + formatte + " à " + ville + " (" + fuseau + ")." };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
