@@ -288,6 +288,56 @@
       "timeout_ms": 3000
     },
     {
+      "id": "qrcode",
+      "nom": "Générateur de QR code",
+      "fonction": "Génère un QR code (image PNG téléchargeable, jamais automatique) à partir d'un texte ou d'une URL.",
+      "url": "./services/qrcode.html",
+      "mots_cles": ["qr code pour", "génère un qr code", "qr code de"],
+      "parametres_attendus": { "texte": "string (obligatoire) — le contenu à encoder" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 8000
+    },
+    {
+      "id": "jours-feries",
+      "nom": "Jours fériés français",
+      "fonction": "Liste les 11 jours fériés français pour une année donnée, avec un vrai calcul de la date de Pâques (algorithme de Gauss).",
+      "url": "./services/jours-feries.html",
+      "mots_cles": ["jours fériés", "jours feries", "quand est pâques", "vacances légales"],
+      "parametres_attendus": { "texte": "string (optionnel) — peut préciser l'année" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 3000
+    },
+    {
+      "id": "dedoublonneur",
+      "nom": "Dédoublonneur de liste",
+      "fonction": "Retire les éléments dupliqués d'une liste (lignes ou séparés par virgules), garde l'ordre d'origine.",
+      "url": "./services/dedoublonneur.html",
+      "mots_cles": ["dédoublonne", "dedoublonne cette liste", "retire les doublons"],
+      "parametres_attendus": { "texte": "string (obligatoire) — la liste à traiter" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 3000
+    },
+    {
+      "id": "calculateur-imc",
+      "nom": "Calculateur IMC",
+      "fonction": "Calcule l'indice de masse corporelle à partir du poids et de la taille. Repère statistique standard, pas un diagnostic médical.",
+      "url": "./services/calculateur-imc.html",
+      "mots_cles": ["imc pour", "calcule mon imc", "indice de masse corporelle"],
+      "parametres_attendus": { "texte": "string (obligatoire) — poids en kg et taille en m/cm" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 3000
+    },
+    {
+      "id": "convertisseur-vitesse",
+      "nom": "Convertisseur de vitesse",
+      "fonction": "Convertit une vitesse entre km/h, mph, m/s et nœuds.",
+      "url": "./services/convertisseur-vitesse.html",
+      "mots_cles": ["en km/h", "en mph", "en m/s", "en nœuds", "en noeuds"],
+      "parametres_attendus": { "texte": "string (obligatoire) — vitesse et unités source/cible" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 3000
+    },
+    {
       "id": "aide",
       "nom": "Aide (liste des capacités)",
       "fonction": "Liste dynamiquement, à partir du registre, tout ce que l'interface sait faire actuellement.",
