@@ -338,6 +338,46 @@
       "timeout_ms": 3000
     },
     {
+      "id": "raccourcisseur-url",
+      "nom": "Raccourcisseur d'URL",
+      "fonction": "Raccourcit une URL longue via is.gd (gratuit, sans clé).",
+      "url": "./modules/sources/raccourcisseur-url.html",
+      "mots_cles": ["raccourcis cette url", "raccourcis ce lien", "url courte"],
+      "parametres_attendus": { "texte": "string (obligatoire) — l'URL à raccourcir" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 8000
+    },
+    {
+      "id": "palindrome",
+      "nom": "Vérificateur de palindrome",
+      "fonction": "Vérifie si un mot ou une phrase se lit pareil dans les deux sens (accents et espaces ignorés).",
+      "url": "./services/palindrome.html",
+      "mots_cles": ["palindrome de", "est-ce un palindrome", "palindrome"],
+      "parametres_attendus": { "texte": "string (obligatoire) — le mot ou la phrase à vérifier" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 3000
+    },
+    {
+      "id": "convertisseur-donnees",
+      "nom": "Convertisseur de données numériques",
+      "fonction": "Convertit entre octets, Ko, Mo, Go et To (base 1024).",
+      "url": "./services/convertisseur-donnees.html",
+      "mots_cles": ["en ko", "en mo", "en go", "en to", "en octets"],
+      "parametres_attendus": { "texte": "string (obligatoire) — valeur et unités source/cible" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 3000
+    },
+    {
+      "id": "degrade-css",
+      "nom": "Générateur de dégradé CSS",
+      "fonction": "Génère un code CSS linear-gradient à partir d'une ou deux couleurs (complémentaire automatique si une seule donnée).",
+      "url": "./services/degrade-css.html",
+      "mots_cles": ["dégradé css", "dégradé de couleur", "linear-gradient", "génère un dégradé"],
+      "parametres_attendus": { "texte": "string (obligatoire) — une ou deux couleurs" },
+      "format_reponse": { "succes": true, "texteRedige": "string" },
+      "timeout_ms": 3000
+    },
+    {
       "id": "aide",
       "nom": "Aide (liste des capacités)",
       "fonction": "Liste dynamiquement, à partir du registre, tout ce que l'interface sait faire actuellement.",
