@@ -3,11 +3,10 @@
 <head><meta charset="UTF-8"><title>Neurone — QR Code</title></head>
 <body>
 <!--
-  Neurone "qrcode" — génère un QR code via la bibliothèque qrcode (CDN,
-  légère, 100% navigateur). Réutilise le même mécanisme "fichier" que
-  l'export PDF : jamais de téléchargement automatique, un lien cliquable.
+  Neurone "qrcode" — image générée via api.qrserver.com (gratuit, sans
+  clé, retourne directement un PNG). Réutilise le mécanisme "fichier" :
+  jamais de téléchargement automatique, un lien cliquable.
 -->
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script>
 (function () {
   "use strict";
@@ -19,9 +18,10 @@
     if (!contenu) return { succes: false };
 
     try {
-      const dataUrl = await QRCode.toDataURL(contenu, { width: 300, margin: 2 });
-      const reponseBlob = await fetch(dataUrl);
-      const blob = await reponseBlob.blob();
+      const url = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(contenu);
+      const reponse = await fetch(url);
+      if (!reponse.ok) throw new Error("HTTP " + reponse.status);
+      const blob = await reponse.blob();
       const nomFichier = "qrcode-" + Date.now() + ".png";
 
       return {
@@ -31,7 +31,7 @@
       };
     } catch (erreur) {
       console.error("[qrcode]", erreur);
-      return { succes: true, texteRedige: "Je n'ai pas pu générer ce QR code." };
+      return { succes: true, texteRedige: "Je n'ai pas pu générer ce QR code (service injoignable)." };
     }
   }
 
