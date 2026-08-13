@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Palindrome</title></head>
+<body>
+<!-- Neurone "palindrome" — vérifie si un mot/une phrase se lit pareil dans les deux sens (accents et espaces ignorés). -->
+<script>
+(function () {
+  "use strict";
+
+  function normaliser(texte) {
+    return texte.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "");
+    const match = texte.match(/palindrome\s*(?:de|pour)?\s*:?\s*(.+)/i);
+    const contenu = match ? match[1].trim() : texte.trim();
+    if (!contenu) return { succes: false };
+
+    const normalise = normaliser(contenu);
+    const inverse = normalise.split("").reverse().join("");
+    const estPalindrome = normalise === inverse && normalise.length > 0;
+
+    return {
+      succes: true,
+      texteRedige: "\"" + contenu + "\" " + (estPalindrome ? "EST un palindrome." : "n'est PAS un palindrome.")
+    };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>

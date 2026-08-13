@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><title>Neurone — Convertisseur de données</title></head>
+<body>
+<!-- Neurone "convertisseur-donnees" — octets/Ko/Mo/Go/To, base 1024 (standard informatique). -->
+<script>
+(function () {
+  "use strict";
+
+  const UNITES = { "o": 0, "octets": 0, "ko": 1, "kb": 1, "mo": 2, "mb": 2, "go": 3, "gb": 3, "to": 4, "tb": 4 };
+  const NOMS = ["octets", "Ko", "Mo", "Go", "To"];
+
+  function detecterUnite(texte) {
+    for (const u of Object.keys(UNITES).sort((a, b) => b.length - a.length)) {
+      if (texte.includes(u)) return UNITES[u];
+    }
+    return null;
+  }
+
+  async function traiterRequete(payload) {
+    const texte = ((payload && (payload.texte || payload.query)) || "").trim().toLowerCase();
+    const nombreMatch = texte.match(/-?\d+(?:[.,]\d+)?/);
+    if (!nombreMatch) return { succes: false };
+    const valeur = parseFloat(nombreMatch[0].replace(",", "."));
+
+    const parties = texte.split(/\ben\b/);
+    if (parties.length < 2) return { succes: true, texteRedige: "Format attendu : \"500 mo en go\", \"2 to en mo\"..." };
+
+    const niveauSource = detecterUnite(parties[0]);
+    const niveauCible = detecterUnite(parties[1]);
+    if (niveauSource === null || niveauCible === null) {
+      return { succes: true, texteRedige: "Unités reconnues : octets, Ko, Mo, Go, To." };
+    }
+
+    const enOctets = valeur * Math.pow(1024, niveauSource);
+    const resultat = enOctets / Math.pow(1024, niveauCible);
+
+    return { succes: true, texteRedige: valeur + " " + NOMS[niveauSource] + " = " + resultat.toFixed(4).replace(/\.?0+$/, "") + " " + NOMS[niveauCible] };
+  }
+
+  window.addEventListener("message", function (evenement) {
+    const donnees = evenement.data;
+    if (!donnees || donnees.type !== "MS_REQUEST") return;
+    const requestId = donnees.requestId;
+    const payload = donnees.payload || {};
+    traiterRequete(payload).then(function (result) {
+      window.parent.postMessage({ type: "MS_RESPONSE", requestId, result }, "*");
+    });
+  });
+})();
+</script>
+</body>
+</html>
