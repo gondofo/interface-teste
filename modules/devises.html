@@ -27,19 +27,28 @@
     if (!params) return { succes: true, texteRedige: "Format attendu : \"100 euros en dollars\", \"50 usd en eur\"... (devises reconnues : EUR, USD, GBP, JPY, CHF, CAD)." };
 
     try {
-      const url = "https://api.frankfurter.dev/v2/rate/" + params.source + "/" + params.cible;
-      const reponse = await fetch(url);
+      const controleur = new AbortController();
+      const minuteur = setTimeout(() => controleur.abort(), 6000);
+
+      const url = "https://open.er-api.com/v6/latest/" + params.source;
+      const reponse = await fetch(url, { signal: controleur.signal });
+      clearTimeout(minuteur);
+
       if (!reponse.ok) throw new Error("HTTP " + reponse.status);
       const data = await reponse.json();
-      if (typeof data.rate !== "number") throw new Error("réponse inattendue");
-      const resultat = params.montant * data.rate;
+      if (data.result !== "success" || !data.rates || typeof data.rates[params.cible] !== "number") {
+        throw new Error("réponse inattendue");
+      }
+
+      const resultat = params.montant * data.rates[params.cible];
       return {
         succes: true,
         texteRedige: params.montant + " " + params.source + " = " + resultat.toFixed(2) + " " + params.cible
       };
     } catch (erreur) {
       console.error("[devises]", erreur);
-      return { succes: true, texteRedige: "Je n'ai pas pu récupérer les taux de change pour le moment (service injoignable)." };
+      const raison = erreur.name === "AbortError" ? "délai dépassé" : "service injoignable";
+      return { succes: true, texteRedige: "Je n'ai pas pu récupérer les taux de change pour le moment (" + raison + ")." };
     }
   }
 
