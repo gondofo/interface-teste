@@ -533,7 +533,10 @@ class Router {
    * une seule tâche (repli sûr, pas de faux découpage).
    */
   diviserEnSousTaches(prompt) {
-    const segments = prompt.split(/\s+\b(?:et|puis|ensuite)\b\s+|;\s*/i).map((s) => s.trim()).filter(Boolean);
+    const segments = prompt
+      .split(/\s+\b(?:et|puis|ensuite)\b\s+|;\s*/i)
+      .map((s) => s.trim().replace(/^,+\s*/, "").replace(/\s*,+$/, ""))
+      .filter(Boolean);
     if (segments.length < 2) return null;
     const evaluations = segments.map((seg) => this.evaluerCandidats(seg));
     const tousValides = evaluations.every((ev) => ev.length > 0 && ev[0].score >= 1);
